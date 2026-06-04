@@ -803,8 +803,18 @@ def open_position_panel(page: Any) -> None:
     )
 
 
+def recover_position_panel(page: Any) -> None:
+    ensure_image_selected(page)
+    open_position_panel(page)
+    page.wait_for_timeout(300)
+
+
 def fill_labeled_value(page: Any, label_text: str, value: str) -> None:
     field = position_panel_input(page, label_text)
+    if field is None:
+        print(f"Could not find {label_text}; reopening Canva Position panel.")
+        recover_position_panel(page)
+        field = position_panel_input(page, label_text)
     if field is None:
         raise RuntimeError(f"Could not find Canva Position input for {label_text!r}.")
 
@@ -837,6 +847,10 @@ def fill_labeled_value(page: Any, label_text: str, value: str) -> None:
 
 def read_labeled_value(page: Any, label_text: str) -> str:
     field = position_panel_input(page, label_text)
+    if field is None:
+        print(f"Could not read {label_text}; reopening Canva Position panel.")
+        recover_position_panel(page)
+        field = position_panel_input(page, label_text)
     if field is None:
         raise RuntimeError(f"Could not read Canva Position input for {label_text!r}.")
 
@@ -1027,47 +1041,57 @@ def set_image_size_and_position(
     open_position_panel(page)
 
     for attempt in range(3):
-        before_width = first_number(read_labeled_value(page, "Width"))
-        before_height = first_number(read_labeled_value(page, "Height"))
-        if lock_ratio_for_width and height is None:
-            ensure_ratio_locked_before_width(page)
+        try:
+            recover_position_panel(page)
+            before_width = first_number(read_labeled_value(page, "Width"))
+            before_height = first_number(read_labeled_value(page, "Height"))
+            if lock_ratio_for_width and height is None:
+                ensure_ratio_locked_before_width(page)
+                open_position_panel(page)
 
-        fill_labeled_value(page, "Width", width)
-        after_width = first_number(read_labeled_value(page, "Width"))
-        after_height = first_number(read_labeled_value(page, "Height"))
-
-        if (
-            lock_ratio_for_width
-            and height is None
-            and before_width is not None
-            and before_height is not None
-            and after_width is not None
-            and after_height is not None
-            and first_number(width) is not None
-            and abs(before_width - first_number(width)) > 1.0
-            and abs(after_height - before_height) <= 0.2
-        ):
-            toggle_ratio_lock_if_available(
-                page, "Height did not update after Width changed; toggled Ratio lock."
-            )
             fill_labeled_value(page, "Width", width)
+            after_width = first_number(read_labeled_value(page, "Width"))
+            after_height = first_number(read_labeled_value(page, "Height"))
 
-        if height is not None:
-            fill_labeled_value(page, "Height", height)
-        fill_labeled_value(page, "X", x_value)
-        fill_labeled_value(page, "Y", y_value)
-        page.wait_for_timeout(500)
+            if (
+                lock_ratio_for_width
+                and height is None
+                and before_width is not None
+                and before_height is not None
+                and after_width is not None
+                and after_height is not None
+                and first_number(width) is not None
+                and abs(before_width - first_number(width)) > 1.0
+                and abs(after_height - before_height) <= 0.2
+            ):
+                toggle_ratio_lock_if_available(
+                    page, "Height did not update after Width changed; toggled Ratio lock."
+                )
+                recover_position_panel(page)
+                fill_labeled_value(page, "Width", width)
 
-        if verify_position_values(
-            page, width, height, x_value, y_value, label_prefix=label_prefix
-        ):
-            return
+            if height is not None:
+                fill_labeled_value(page, "Height", height)
+            fill_labeled_value(page, "X", x_value)
+            fill_labeled_value(page, "Y", y_value)
+            page.wait_for_timeout(500)
 
-        print(f"Position values drifted after attempt {attempt + 1}; retrying...")
-        if attempt == 0:
-            toggle_ratio_lock_if_available(
-                page, "Toggled Ratio lock because Width/Height did not verify."
-            )
+            if verify_position_values(
+                page, width, height, x_value, y_value, label_prefix=label_prefix
+            ):
+                return
+
+            print(f"Position values drifted after attempt {attempt + 1}; retrying...")
+            if attempt == 0:
+                toggle_ratio_lock_if_available(
+                    page, "Toggled Ratio lock because Width/Height did not verify."
+                )
+                recover_position_panel(page)
+        except Exception as exc:
+            print(f"Position attempt {attempt + 1} failed: {exc}")
+            if attempt == 2:
+                raise
+            page.wait_for_timeout(1000)
 
     raise RuntimeError(
         "Could not keep Canva image at the requested Width/Height/X/Y values."
