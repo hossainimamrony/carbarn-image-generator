@@ -388,17 +388,17 @@ class CanvaWebHandler(SimpleHTTPRequestHandler):
                 )
 
                 if path == "/api/start-bg":
-                    commands = [("Canva BG Remover", build_bg_command(clean_settings))]
-                    first_log = "Starting Canva BG remover...\n"
+                    commands = [("Canva", build_bg_command(clean_settings))]
+                    first_log = "Starting Canva automation...\n"
                 elif path == "/api/start-perfect":
-                    commands = [("Perfect Car Image", build_perfect_command(clean_settings))]
-                    first_log = "Starting perfect image generation...\n"
+                    commands = [("Flow", build_perfect_command(clean_settings))]
+                    first_log = "Starting Flow automation...\n"
                 else:
                     commands = [
-                        ("Canva BG Remover", build_bg_command(clean_settings)),
-                        ("Perfect Car Image", build_perfect_command(clean_settings)),
+                        ("Canva", build_bg_command(clean_settings)),
+                        ("Flow", build_perfect_command(clean_settings)),
                     ]
-                    first_log = "Starting full pipeline: Canva BG remover then perfect image generation...\n"
+                    first_log = "Starting full pipeline: Canva then Flow...\n"
 
                 start_sequence(commands, first_log)
                 return self.send_json({"ok": True})

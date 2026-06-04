@@ -79,8 +79,8 @@ The web UI lets you set:
 
 The main buttons are:
 
-- **BG Only**: runs only `canva_bg_remove_download.py`
-- **Perfect Only**: runs only `perfect_car_image.py`
+- **Canva Only**: runs only `canva_bg_remove_download.py`
+- **Flow Only**: runs only `perfect_car_image.py`
 - **Full Pipeline**: runs Canva BG remover first, then perfect image generation
 - **Canva Output**: opens `assets\canva_download`
 - **Gemini Output**: opens `assets\perfect_car_images`

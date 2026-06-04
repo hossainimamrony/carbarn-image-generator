@@ -144,13 +144,13 @@ saveButton.addEventListener("click", () => {
 
 document.querySelector("#startBgRun").addEventListener("click", () => {
   startRun("/api/start-bg").catch((error) =>
-    appendClientLog(`BG remover failed to start: ${error.message}\n`),
+    appendClientLog(`Canva failed to start: ${error.message}\n`),
   );
 });
 
 document.querySelector("#startPerfectRun").addEventListener("click", () => {
   startRun("/api/start-perfect").catch((error) =>
-    appendClientLog(`Perfect image failed to start: ${error.message}\n`),
+    appendClientLog(`Flow failed to start: ${error.message}\n`),
   );
 });
 

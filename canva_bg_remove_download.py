@@ -647,17 +647,32 @@ def get_design_center(page: Any) -> tuple[float, float]:
 def wait_for_image_selection(page: Any, timeout_seconds: int = 30) -> None:
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
-        selection_markers = [
-            page.get_by_text(re.compile(r"BG Remover", re.I)),
-            page.get_by_text(re.compile(r"Position", re.I)),
-            page.get_by_text(re.compile(r"Ask Canva", re.I)),
-        ]
-        if any(safe_is_visible(marker, timeout=400) for marker in selection_markers):
+        if image_selection_visible(page, timeout=400):
             print("Uploaded image appears selected.")
             return
         page.wait_for_timeout(500)
 
     raise RuntimeError("Uploaded image did not appear selected in Canva.")
+
+
+def image_selection_visible(page: Any, timeout: int = 250) -> bool:
+    selection_markers = [
+        page.get_by_text(re.compile(r"BG Remover", re.I)),
+        page.get_by_text(re.compile(r"Position", re.I)),
+        page.get_by_text(re.compile(r"Ask Canva", re.I)),
+        page.get_by_role("button", name=re.compile(r"Delete", re.I)),
+        page.locator("[aria-label*='Delete' i]"),
+    ]
+    return any(safe_is_visible(marker, timeout=timeout) for marker in selection_markers)
+
+
+def ensure_image_selected(page: Any, timeout_seconds: int = 30) -> None:
+    if image_selection_visible(page):
+        return
+
+    x, y = get_design_center(page)
+    page.mouse.click(x, y)
+    wait_for_image_selection(page, timeout_seconds=timeout_seconds)
 
 
 def button_near_label(page: Any, label_text: str) -> Any | None:
@@ -1007,9 +1022,7 @@ def set_image_size_and_position(
     label_prefix: str = "Position",
     lock_ratio_for_width: bool = False,
 ) -> None:
-    x, y = get_design_center(page)
-    page.mouse.click(x, y)
-    wait_for_image_selection(page)
+    ensure_image_selected(page)
 
     open_position_panel(page)
 
@@ -1169,9 +1182,7 @@ def wait_for_canva_to_settle(
 
 
 def run_bg_remover(page: Any, timeout_seconds: int) -> None:
-    x, y = get_design_center(page)
-    page.mouse.click(x, y)
-    wait_for_image_selection(page)
+    ensure_image_selected(page)
     require_click_by_text(page, "BG Remover", timeout=12_000)
     print("BG Remover clicked.")
     wait_for_canva_to_settle(
