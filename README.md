@@ -70,7 +70,6 @@ The web UI lets you set:
 - Chrome EXE path
 - Chrome automation profile folder
 - debug port
-- Canva placement values
 - timeout values
 - batch options
 - Google Flow perfect-image input and output folders

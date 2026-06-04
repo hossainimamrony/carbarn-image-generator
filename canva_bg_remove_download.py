@@ -773,7 +773,10 @@ def ensure_ratio_locked_before_width(page: Any) -> None:
     if state is False:
         toggle_ratio_lock_if_available(page, "Ratio locked before setting final width.")
         return
-    print("Ratio lock state is unclear; will verify from Height after setting Width.")
+    toggle_ratio_lock_if_available(
+        page,
+        "Ratio lock state is unclear; clicked Ratio lock before setting final width.",
+    )
 
 
 def position_panel_visible(page: Any) -> bool:
@@ -1243,7 +1246,7 @@ def open_download_panel(page: Any) -> None:
 
 
 def ensure_jpg_file_type(page: Any) -> None:
-    if safe_is_visible(page.get_by_text("JPG", exact=True), timeout=1500):
+    if safe_is_visible(page.get_by_text("JPG", exact=True), timeout=400):
         print("File type already shows JPG.")
         return
 
@@ -1257,12 +1260,12 @@ def ensure_jpg_file_type(page: Any) -> None:
             wait_for_any_visible(
                 page,
                 [page.get_by_text("JPG", exact=True)],
-                timeout_seconds=10,
+                timeout_seconds=4,
                 description="JPG option",
             )
             break
 
-    if not click_by_text(page, "JPG", timeout=5000):
+    if not click_by_text(page, "JPG", timeout=2500):
         raise RuntimeError("Could not select JPG in Canva's download file type menu.")
     print("File type set to JPG.")
 
@@ -1329,6 +1332,20 @@ def input_near_label(page: Any, label_text: str) -> Any | None:
 def set_quality_to_100(page: Any) -> None:
     quality_input = input_near_label(page, "Quality")
     if quality_input is not None:
+        current = str(
+            quality_input.evaluate(
+                """
+                (element) => {
+                    const raw = element.value ?? element.innerText ?? element.textContent ?? '';
+                    return String(raw).trim();
+                }
+                """
+            )
+        )
+        if field_value_matches(current, "100", tolerance=0.1):
+            print("Quality already set to 100.")
+            return
+
         quality_input.click(timeout=5000)
         page.keyboard.press("Control+A")
         page.keyboard.type("100")
@@ -1355,7 +1372,7 @@ def click_final_download(page: Any, output_path: Path, timeout_seconds: int) -> 
 
     with page.expect_download(timeout=timeout_seconds * 1000) as download_info:
         for locator in download_buttons:
-            if click_locator(locator.last, timeout=5000):
+            if click_locator(locator.last, timeout=2500):
                 break
         else:
             raise RuntimeError("Could not click the final Canva Download button.")
@@ -1365,7 +1382,7 @@ def click_final_download(page: Any, output_path: Path, timeout_seconds: int) -> 
     print(f"Downloaded file saved to: {output_path}")
 
 
-def close_share_or_download_panels(page: Any, timeout_seconds: int = 15) -> None:
+def close_share_or_download_panels(page: Any, timeout_seconds: int = 6) -> None:
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
         panel_markers = [
@@ -1429,9 +1446,12 @@ def cleanup_canvas_image(page: Any, timeout_seconds: int = 20) -> None:
     print("Cleaning Canva page for the next image...")
     close_share_or_download_panels(page)
 
-    x, y = get_design_center(page)
-    page.mouse.click(x, y)
-    wait_for_image_selection(page, timeout_seconds=10)
+    ensure_image_selected(page, timeout_seconds=8)
+
+    page.keyboard.press("Delete")
+    if wait_for_selection_to_clear(page, timeout_seconds=4):
+        print("Canvas image deleted.")
+        return
 
     delete_attempts = [
         ("toolbar Delete", click_toolbar_delete),
@@ -1443,8 +1463,7 @@ def cleanup_canvas_image(page: Any, timeout_seconds: int = 20) -> None:
             return
         print(f"{label} did not clear the selected image; trying next delete method.")
 
-    page.mouse.click(x, y)
-    wait_for_image_selection(page, timeout_seconds=5)
+    ensure_image_selected(page, timeout_seconds=5)
     page.keyboard.press("Delete")
     if wait_for_selection_to_clear(page, timeout_seconds=timeout_seconds):
         print("Canvas image deleted.")
