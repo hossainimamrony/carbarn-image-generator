@@ -41,6 +41,21 @@ $venvPython = Join-Path $venvPath "Scripts\python.exe"
 Write-Host "Canva Background Remover setup for Windows" -ForegroundColor Green
 Write-Host "Project folder: $PSScriptRoot"
 
+Write-Step "Pulling latest code"
+try {
+    git --version *> $null
+    if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath (Join-Path $PSScriptRoot ".git"))) {
+        git pull --ff-only
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Git pull did not complete. Continuing with the local code." -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "Git is not available or this folder is not a Git repository. Skipping git pull." -ForegroundColor Yellow
+    }
+} catch {
+    Write-Host "Git pull could not run. Continuing with the local code." -ForegroundColor Yellow
+}
+
 Write-Step "Checking Python"
 $pythonCommand = Get-PythonCommand
 Write-Host "Using: $($pythonCommand -join ' ')"

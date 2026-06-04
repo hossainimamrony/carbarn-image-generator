@@ -17,6 +17,7 @@ setup_and_run.bat
 
 The setup script will:
 
+- run `git pull --ff-only` to get the latest code when this folder is a Git repo
 - create a local `.venv` virtual environment
 - upgrade `pip`
 - install all Python packages from `requirements.txt`

@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import threading
+import traceback
 import webbrowser
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -276,14 +277,24 @@ def read_json_body(handler: SimpleHTTPRequestHandler) -> dict[str, Any]:
 
 def run_command(label: str, command: list[str]) -> int:
     STATE.append_log(f"\n===== {label} =====\n")
-    process = subprocess.Popen(
-        command,
-        cwd=BASE_DIR,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-    )
+    STATE.append_log("Command:\n")
+    STATE.append_log(" ".join(f'"{part}"' if " " in part else part for part in command))
+    STATE.append_log("\n\n")
+    try:
+        process = subprocess.Popen(
+            command,
+            cwd=BASE_DIR,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
+        )
+    except Exception:
+        STATE.append_log("Could not start process:\n")
+        STATE.append_log(traceback.format_exc())
+        return 1
     STATE.process = process
 
     assert process.stdout is not None
@@ -304,6 +315,10 @@ def run_sequence(commands: list[tuple[str, list[str]]]) -> None:
                 STATE.append_log(f"\n{label} exited with code {return_code}.\n")
                 return
         STATE.append_log("\nAutomation finished successfully.\n")
+    except Exception:
+        STATE.return_code = 1
+        STATE.append_log("\nWeb server command runner crashed:\n")
+        STATE.append_log(traceback.format_exc())
     finally:
         STATE.sequence_running = False
         STATE.process = None
