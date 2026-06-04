@@ -1370,18 +1370,111 @@ def set_quality_to_100(page: Any) -> None:
     raise RuntimeError("Could not find Canva's JPG quality input.")
 
 
+def final_download_button_handle(page: Any) -> Any | None:
+    handle = page.evaluate_handle(
+        """
+        () => {
+            const visible = (element) => {
+                const rect = element.getBoundingClientRect();
+                const style = window.getComputedStyle(element);
+                return (
+                    rect.width > 0 &&
+                    rect.height > 0 &&
+                    style.visibility !== 'hidden' &&
+                    style.display !== 'none' &&
+                    style.pointerEvents !== 'none'
+                );
+            };
+
+            const textOf = (element) => (
+                element.innerText ||
+                element.textContent ||
+                element.getAttribute('aria-label') ||
+                element.getAttribute('title') ||
+                ''
+            ).replace(/\\s+/g, ' ').trim();
+
+            const buttons = Array.from(document.querySelectorAll('button, [role="button"]'))
+                .map((element) => ({ element, rect: element.getBoundingClientRect(), text: textOf(element) }))
+                .filter(({ element, rect, text }) => {
+                    const disabled = element.hasAttribute('disabled') ||
+                        (element.getAttribute('aria-disabled') || '').toLowerCase() === 'true';
+                    return (
+                        !disabled &&
+                        visible(element) &&
+                        /^Download$/i.test(text) &&
+                        rect.width >= 70 &&
+                        rect.height >= 30
+                    );
+                })
+                .sort((a, b) => {
+                    const bottom = b.rect.bottom - a.rect.bottom;
+                    if (Math.abs(bottom) > 8) return bottom;
+                    return b.rect.right - a.rect.right;
+                });
+
+            return buttons[0]?.element || null;
+        }
+        """
+    )
+    return handle.as_element()
+
+
+def click_final_download_button(page: Any) -> bool:
+    element = final_download_button_handle(page)
+    if element is not None:
+        try:
+            element.scroll_into_view_if_needed(timeout=2000)
+            element.click(timeout=2500, force=True)
+            print("Clicked final Canva Download button.")
+            return True
+        except Exception:
+            pass
+
+        try:
+            element.evaluate("(button) => button.click()")
+            print("Clicked final Canva Download button with JS fallback.")
+            return True
+        except Exception:
+            pass
+
+        try:
+            box = element.bounding_box()
+            if box:
+                page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+                print("Clicked final Canva Download button with coordinate fallback.")
+                return True
+        except Exception:
+            pass
+
+    fallback_locators = [
+        page.get_by_role("button", name=re.compile(r"^Download$", re.I)).last,
+        page.locator("[aria-label='Download']").last,
+        page.locator("[aria-label*='Download' i]").last,
+    ]
+    for locator in fallback_locators:
+        try:
+            locator.wait_for(state="visible", timeout=1500)
+            locator.scroll_into_view_if_needed(timeout=1500)
+            locator.click(timeout=1500, force=True)
+            print("Clicked final Canva Download button with locator fallback.")
+            return True
+        except Exception:
+            pass
+
+    try:
+        page.keyboard.press("Enter")
+        print("Pressed Enter as final Canva Download fallback.")
+        return True
+    except Exception:
+        return False
+
+
 def click_final_download(page: Any, output_path: Path, timeout_seconds: int) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    download_buttons = [
-        page.get_by_role("button", name=re.compile(r"^Download$", re.I)),
-        page.get_by_text(re.compile(r"^Download$", re.I)),
-    ]
 
     with page.expect_download(timeout=timeout_seconds * 1000) as download_info:
-        for locator in download_buttons:
-            if click_locator(locator.last, timeout=2500):
-                break
-        else:
+        if not click_final_download_button(page):
             raise RuntimeError("Could not click the final Canva Download button.")
 
     download = download_info.value
