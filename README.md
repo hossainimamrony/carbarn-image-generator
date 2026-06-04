@@ -81,10 +81,14 @@ The main buttons are:
 - **Canva Only**: runs only `canva_bg_remove_download.py`
 - **Flow Only**: runs only `perfect_car_image.py`
 - **Full Pipeline**: runs Canva BG remover first, then perfect image generation
+- **Pause Flow**: pauses before the next major Flow action so you can change model/settings
+- **Resume Flow**: continues Flow automation after a pause
 - **Canva Output**: opens `assets\canva_download`
 - **Gemini Output**: opens `assets\perfect_car_images`
 
 Logs appear in the live log panel.
+
+The **Flow prompt** field is live. The UI saves it while you type, and Flow reloads it before each image submission, so prompt changes apply without restarting the run.
 
 ## First Canva Login
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import subprocess
 import sys
@@ -28,6 +29,8 @@ FLOW_HOME_URL = "https://labs.google/fx/tools/flow"
 DEFAULT_INPUT_DIR = ASSETS_DIR / "canva_download"
 DEFAULT_OUTPUT_DIR = ASSETS_DIR / "perfect_car_images"
 DEFAULT_DEBUG_PORT = 9222
+DEFAULT_PROMPT_FILE = BASE_DIR / "flow_prompt.txt"
+DEFAULT_CONTROL_FILE = BASE_DIR / "flow_control.json"
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
 PLACEHOLDER_IMAGE = "/fx/pinhole/flower-placeholder.webp"
 
@@ -202,6 +205,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--start-at", type=int, default=1)
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--delay", type=float, default=2.0)
+    parser.add_argument("--prompt-file", default=str(DEFAULT_PROMPT_FILE))
+    parser.add_argument("--control-file", default=str(DEFAULT_CONTROL_FILE))
     parser.add_argument(
         "--batch-size",
         type=int,
@@ -226,6 +231,49 @@ def parse_args() -> argparse.Namespace:
         help="List selected images and exit without opening Flow.",
     )
     return parser.parse_args()
+
+
+def read_prompt_file(prompt_file: Path) -> str:
+    try:
+        if prompt_file.exists():
+            prompt = prompt_file.read_text(encoding="utf-8").strip()
+            if prompt:
+                return prompt
+    except OSError:
+        pass
+    return PERFECT_CAR_PROMPT
+
+
+def flow_is_paused(control_file: Path) -> bool:
+    try:
+        if not control_file.exists():
+            return False
+        data = json.loads(control_file.read_text(encoding="utf-8"))
+        return bool(data.get("paused"))
+    except (OSError, json.JSONDecodeError, AttributeError):
+        return False
+
+
+def wait_if_paused(control_file: Path, page: Any | None = None) -> None:
+    if not flow_is_paused(control_file):
+        return
+
+    print("Flow automation paused. Use Resume in the web UI when ready.")
+    while flow_is_paused(control_file):
+        if page is not None:
+            page.wait_for_timeout(1000)
+        else:
+            time.sleep(1)
+    print("Flow automation resumed.")
+
+
+def wait_with_pause(page: Any, seconds: float, control_file: Path) -> None:
+    end_time = time.time() + max(0.0, seconds)
+    while time.time() < end_time:
+        wait_if_paused(control_file, page)
+        remaining_ms = min(500, max(0, int((end_time - time.time()) * 1000)))
+        if remaining_ms:
+            page.wait_for_timeout(remaining_ms)
 
 
 def require_playwright():
@@ -1729,11 +1777,22 @@ def click_send_arrow(page: Any) -> None:
     print("Clicked composer send arrow.")
 
 
-def submit_attached_image_prompt(page: Any, image_path: Path, fallback_index: int, upload_timeout: int) -> None:
+def submit_attached_image_prompt(
+    page: Any,
+    image_path: Path,
+    fallback_index: int,
+    upload_timeout: int,
+    prompt_text: str,
+    control_file: Path,
+) -> None:
+    wait_if_paused(control_file, page)
     clear_prompt_attachments(page)
+    wait_if_paused(control_file, page)
     attach_uploaded_asset_to_prompt(page, image_path, fallback_index, upload_timeout)
-    fill_prompt_exact(page, PERFECT_CAR_PROMPT)
+    wait_if_paused(control_file, page)
+    fill_prompt_exact(page, prompt_text)
     close_asset_picker(page)
+    wait_if_paused(control_file, page)
     wait_for_composer_send_enabled(page)
     click_send_arrow(page)
     page.wait_for_timeout(1500)
@@ -1825,15 +1884,17 @@ def process_images(
     download_timeout: int,
     delay_seconds: float,
     batch_size: int,
+    prompt_file: Path,
+    control_file: Path,
 ) -> list[Path]:
     saved_files: list[Path] = []
 
-    upload_all_images_to_flow_assets(page, images, upload_timeout)
     seen_sources = {entry["src"] for entry in get_media_entries(page)}
-    print(f"Generation baseline set after upload: {len(seen_sources)} existing media item(s).")
+    print(f"Generation baseline set: {len(seen_sources)} existing media item(s).")
 
     batch_size = max(1, batch_size)
     for batch_start in range(0, len(images), batch_size):
+        wait_if_paused(control_file, page)
         batch = images[batch_start : batch_start + batch_size]
         batch_number = batch_start // batch_size + 1
         batch_total = (len(images) + batch_size - 1) // batch_size
@@ -1846,15 +1907,28 @@ def process_images(
         )
 
         for offset, image_path in enumerate(batch):
+            wait_if_paused(control_file, page)
             index = batch_start + offset + 1
             print("")
+            print(f"[{index}/{len(images)}] Uploading Flow asset: {image_path.name}")
+            upload_all_images_to_flow_assets(page, [image_path], upload_timeout)
+            seen_sources.update(entry["src"] for entry in get_media_entries(page))
+
+            prompt_text = read_prompt_file(prompt_file)
             print(f"[{index}/{len(images)}] Attaching uploaded Flow asset: {image_path.name}")
-            submit_attached_image_prompt(page, image_path, index - 1, upload_timeout)
+            submit_attached_image_prompt(
+                page,
+                image_path,
+                0,
+                upload_timeout,
+                prompt_text,
+                control_file,
+            )
             print(f"[{index}/{len(images)}] Submitted.")
 
             if delay_seconds > 0 and offset < len(batch) - 1:
                 print(f"[{index}/{len(images)}] Waiting {delay_seconds:g}s before next submit...")
-                page.wait_for_timeout(int(delay_seconds * 1000))
+                wait_with_pause(page, delay_seconds, control_file)
 
         print("")
         print(
@@ -1888,6 +1962,8 @@ def main() -> int:
 
     input_dir = Path(args.input_dir).expanduser().resolve()
     output_dir = Path(args.output_dir).expanduser().resolve()
+    prompt_file = Path(args.prompt_file).expanduser().resolve()
+    control_file = Path(args.control_file).expanduser().resolve()
     images = slice_items(image_files_in_dir(input_dir), args.start_at, args.limit)
 
     if args.dry_run:
@@ -1943,6 +2019,8 @@ def main() -> int:
                 args.download_timeout,
                 args.delay,
                 args.batch_size,
+                prompt_file,
+                control_file,
             )
             print("")
             print(f"Saved {len(saved_files)} Flow output file(s).")

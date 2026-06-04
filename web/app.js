@@ -12,9 +12,13 @@ const stopButton = document.querySelector("#stopRun");
 const saveButton = document.querySelector("#saveSettings");
 const openCanvaOutputButton = document.querySelector("#openCanvaOutput");
 const openGeminiOutputButton = document.querySelector("#openGeminiOutput");
+const pauseFlowButton = document.querySelector("#pauseFlow");
+const resumeFlowButton = document.querySelector("#resumeFlow");
 const clearLogButton = document.querySelector("#clearLog");
+const flowPromptInput = form.elements.flow_prompt;
 
 let latestLogText = "";
+let promptSaveTimer = null;
 
 function readForm() {
   const data = {};
@@ -83,7 +87,24 @@ async function saveSettings() {
   appendClientLog("Settings saved.\n");
 }
 
+async function saveFlowPrompt() {
+  await api("/api/flow-prompt", {
+    method: "POST",
+    body: JSON.stringify({ flow_prompt: flowPromptInput.value }),
+  });
+}
+
+function queuePromptSave() {
+  window.clearTimeout(promptSaveTimer);
+  promptSaveTimer = window.setTimeout(() => {
+    saveFlowPrompt().catch((error) =>
+      appendClientLog(`Prompt save failed: ${error.message}\n`),
+    );
+  }, 700);
+}
+
 async function startRun(path) {
+  await saveFlowPrompt();
   latestLogText = "";
   logOutput.textContent = "";
   await api(path, {
@@ -95,6 +116,18 @@ async function startRun(path) {
 
 async function stopRun() {
   await api("/api/stop", { method: "POST", body: "{}" });
+  await refreshStatus();
+}
+
+async function pauseFlow() {
+  await saveFlowPrompt();
+  await api("/api/flow-pause", { method: "POST", body: "{}" });
+  await refreshStatus();
+}
+
+async function resumeFlow() {
+  await saveFlowPrompt();
+  await api("/api/flow-resume", { method: "POST", body: "{}" });
   await refreshStatus();
 }
 
@@ -124,8 +157,12 @@ async function refreshStatus() {
     button.disabled = payload.running;
   }
   stopButton.disabled = !payload.running;
+  pauseFlowButton.disabled = !payload.running || payload.flow_paused;
+  resumeFlowButton.disabled = !payload.running || !payload.flow_paused;
   runStatus.textContent = payload.running
-    ? "Running"
+    ? payload.flow_paused
+      ? "Paused"
+      : "Running"
     : payload.return_code === 0
       ? "Finished"
       : payload.return_code === null
@@ -160,6 +197,14 @@ document.querySelector("#startPipelineRun").addEventListener("click", () => {
   );
 });
 
+pauseFlowButton.addEventListener("click", () => {
+  pauseFlow().catch((error) => appendClientLog(`Pause failed: ${error.message}\n`));
+});
+
+resumeFlowButton.addEventListener("click", () => {
+  resumeFlow().catch((error) => appendClientLog(`Resume failed: ${error.message}\n`));
+});
+
 stopButton.addEventListener("click", () => {
   stopRun().catch((error) => appendClientLog(`Stop failed: ${error.message}\n`));
 });
@@ -180,6 +225,8 @@ clearLogButton.addEventListener("click", () => {
   latestLogText = "";
   logOutput.textContent = "";
 });
+
+flowPromptInput.addEventListener("input", queuePromptSave);
 
 loadDefaults().catch((error) => appendClientLog(`Load failed: ${error.message}\n`));
 setInterval(() => {

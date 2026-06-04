@@ -32,6 +32,7 @@ from perfect_car_image import (
     DEFAULT_DEBUG_PORT as PERFECT_DEFAULT_DEBUG_PORT,
     DEFAULT_INPUT_DIR as PERFECT_DEFAULT_INPUT_DIR,
     DEFAULT_OUTPUT_DIR as PERFECT_DEFAULT_OUTPUT_DIR,
+    PERFECT_CAR_PROMPT,
 )
 
 
@@ -41,6 +42,40 @@ WEB_DIR = BASE_DIR / "web"
 BG_SCRIPT_PATH = BASE_DIR / "canva_bg_remove_download.py"
 PERFECT_SCRIPT_PATH = BASE_DIR / "perfect_car_image.py"
 SETTINGS_PATH = BASE_DIR / "canva_web_settings.json"
+FLOW_PROMPT_PATH = BASE_DIR / "flow_prompt.txt"
+FLOW_CONTROL_PATH = BASE_DIR / "flow_control.json"
+
+
+def load_flow_prompt() -> str:
+    try:
+        if FLOW_PROMPT_PATH.exists():
+            prompt = FLOW_PROMPT_PATH.read_text(encoding="utf-8").strip()
+            if prompt:
+                return prompt
+    except OSError:
+        pass
+    return PERFECT_CAR_PROMPT
+
+
+def save_flow_prompt(prompt: str) -> None:
+    FLOW_PROMPT_PATH.write_text(prompt.strip() or PERFECT_CAR_PROMPT, encoding="utf-8")
+
+
+def set_flow_paused(paused: bool) -> None:
+    FLOW_CONTROL_PATH.write_text(
+        json.dumps({"paused": paused}, indent=2),
+        encoding="utf-8",
+    )
+
+
+def flow_paused() -> bool:
+    try:
+        if not FLOW_CONTROL_PATH.exists():
+            return False
+        data = json.loads(FLOW_CONTROL_PATH.read_text(encoding="utf-8"))
+        return bool(data.get("paused"))
+    except (OSError, json.JSONDecodeError, AttributeError):
+        return False
 
 
 DEFAULTS: dict[str, Any] = {
@@ -89,6 +124,7 @@ DEFAULTS: dict[str, Any] = {
     "perfect_use_current_page": False,
     "perfect_keep_browser_open": False,
     "perfect_dry_run": False,
+    "flow_prompt": PERFECT_CAR_PROMPT,
 }
 
 
@@ -115,6 +151,7 @@ class AutomationState:
             return {
                 "running": self.running(),
                 "return_code": self.return_code,
+                "flow_paused": flow_paused(),
                 "logs": self.logs,
             }
 
@@ -133,6 +170,7 @@ def merged_settings() -> dict[str, Any]:
                 )
         except json.JSONDecodeError:
             pass
+    settings["flow_prompt"] = load_flow_prompt()
     return settings
 
 
@@ -241,6 +279,10 @@ def build_perfect_command(settings: dict[str, Any]) -> list[str]:
         str(values["perfect_upload_timeout"]).strip(),
         "--download-timeout",
         str(values["perfect_download_timeout"]).strip(),
+        "--prompt-file",
+        str(FLOW_PROMPT_PATH),
+        "--control-file",
+        str(FLOW_CONTROL_PATH),
         "--yes",
     ]
 
@@ -365,11 +407,27 @@ class CanvaWebHandler(SimpleHTTPRequestHandler):
                 settings = read_json_body(self)
                 clean = DEFAULTS.copy()
                 clean.update({key: settings.get(key, DEFAULTS[key]) for key in DEFAULTS})
+                save_flow_prompt(str(clean.get("flow_prompt", PERFECT_CAR_PROMPT)))
                 SETTINGS_PATH.write_text(
                     json.dumps(clean, indent=2),
                     encoding="utf-8",
                 )
                 return self.send_json({"ok": True, "settings": clean})
+
+            if path == "/api/flow-prompt":
+                settings = read_json_body(self)
+                save_flow_prompt(str(settings.get("flow_prompt", PERFECT_CAR_PROMPT)))
+                return self.send_json({"ok": True})
+
+            if path == "/api/flow-pause":
+                set_flow_paused(True)
+                STATE.append_log("\nFlow pause requested.\n")
+                return self.send_json({"ok": True})
+
+            if path == "/api/flow-resume":
+                set_flow_paused(False)
+                STATE.append_log("\nFlow resume requested.\n")
+                return self.send_json({"ok": True})
 
             if path in {"/api/start-bg", "/api/start-perfect", "/api/start-pipeline"}:
                 if STATE.running():
@@ -382,10 +440,12 @@ class CanvaWebHandler(SimpleHTTPRequestHandler):
                 clean_settings = {
                     key: settings.get(key, DEFAULTS[key]) for key in DEFAULTS
                 }
+                save_flow_prompt(str(clean_settings.get("flow_prompt", PERFECT_CAR_PROMPT)))
                 SETTINGS_PATH.write_text(
                     json.dumps(clean_settings, indent=2),
                     encoding="utf-8",
                 )
+                set_flow_paused(False)
 
                 if path == "/api/start-bg":
                     commands = [("Canva", build_bg_command(clean_settings))]
