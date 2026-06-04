@@ -25,12 +25,20 @@ from canva_bg_remove_download import (
     DEFAULT_OUTPUT_NAME,
     DEFAULT_PROFILE_DIR,
 )
+from perfect_car_image import (
+    DEFAULT_CHROME_PROFILE_DIRECTORY as PERFECT_DEFAULT_CHROME_PROFILE_DIRECTORY,
+    DEFAULT_CHROME_USER_DATA_DIR as PERFECT_DEFAULT_CHROME_USER_DATA_DIR,
+    DEFAULT_DEBUG_PORT as PERFECT_DEFAULT_DEBUG_PORT,
+    DEFAULT_INPUT_DIR as PERFECT_DEFAULT_INPUT_DIR,
+    DEFAULT_OUTPUT_DIR as PERFECT_DEFAULT_OUTPUT_DIR,
+)
 
 
 HOST = "127.0.0.1"
 PORT = 8765
 WEB_DIR = BASE_DIR / "web"
-SCRIPT_PATH = BASE_DIR / "canva_bg_remove_download.py"
+BG_SCRIPT_PATH = BASE_DIR / "canva_bg_remove_download.py"
+PERFECT_SCRIPT_PATH = BASE_DIR / "perfect_car_image.py"
 SETTINGS_PATH = BASE_DIR / "canva_web_settings.json"
 
 
@@ -61,21 +69,39 @@ DEFAULTS: dict[str, Any] = {
     "target_x": "500 px",
     "target_y": "500 px",
     "single_image": False,
-    "skip_google_download": False,
+    "download_google_photos": False,
+    "skip_google_download": True,
     "skip_initial_fit": False,
     "keep_open": False,
+    "perfect_input_dir": str(PERFECT_DEFAULT_INPUT_DIR),
+    "perfect_output_dir": str(PERFECT_DEFAULT_OUTPUT_DIR),
+    "perfect_project_url": "",
+    "perfect_debug_port": str(PERFECT_DEFAULT_DEBUG_PORT),
+    "perfect_chrome_user_data_dir": str(PERFECT_DEFAULT_CHROME_USER_DATA_DIR),
+    "perfect_chrome_profile_directory": PERFECT_DEFAULT_CHROME_PROFILE_DIRECTORY,
+    "perfect_start_at": "1",
+    "perfect_limit": "",
+    "perfect_delay": "2.0",
+    "perfect_batch_size": "8",
+    "perfect_upload_timeout": "120",
+    "perfect_download_timeout": "420",
+    "perfect_use_current_page": False,
+    "perfect_keep_browser_open": False,
+    "perfect_dry_run": False,
 }
 
 
 class AutomationState:
     def __init__(self) -> None:
         self.process: subprocess.Popen[str] | None = None
+        self.sequence_running = False
         self.logs: list[str] = []
         self.lock = threading.Lock()
         self.return_code: int | None = None
 
     def running(self) -> bool:
-        return self.process is not None and self.process.poll() is None
+        process_running = self.process is not None and self.process.poll() is None
+        return self.sequence_running or process_running
 
     def append_log(self, text: str) -> None:
         with self.lock:
@@ -109,14 +135,14 @@ def merged_settings() -> dict[str, Any]:
     return settings
 
 
-def build_command(settings: dict[str, Any]) -> list[str]:
+def build_bg_command(settings: dict[str, Any]) -> list[str]:
     values = DEFAULTS.copy()
     values.update({key: settings.get(key, DEFAULTS[key]) for key in DEFAULTS})
 
     command = [
         sys.executable,
         "-u",
-        str(SCRIPT_PATH),
+        str(BG_SCRIPT_PATH),
         "--design-url",
         str(values["design_url"]).strip(),
         "--photos-url",
@@ -171,11 +197,64 @@ def build_command(settings: dict[str, Any]) -> list[str]:
     if max_images:
         command.extend(["--max-images", max_images])
 
+    if not bool(values["single_image"]) and not bool(values["download_google_photos"]):
+        command.append("--skip-google-download")
+
     flags = {
         "single_image": "--single-image",
-        "skip_google_download": "--skip-google-download",
         "skip_initial_fit": "--skip-initial-fit",
         "keep_open": "--keep-open",
+    }
+    for key, flag in flags.items():
+        if bool(values[key]):
+            command.append(flag)
+
+    return command
+
+
+def build_perfect_command(settings: dict[str, Any]) -> list[str]:
+    values = DEFAULTS.copy()
+    values.update({key: settings.get(key, DEFAULTS[key]) for key in DEFAULTS})
+
+    command = [
+        sys.executable,
+        "-u",
+        str(PERFECT_SCRIPT_PATH),
+        "--input-dir",
+        str(values["perfect_input_dir"]).strip(),
+        "--output-dir",
+        str(values["perfect_output_dir"]).strip(),
+        "--debug-port",
+        str(values["perfect_debug_port"]).strip(),
+        "--chrome-user-data-dir",
+        str(values["perfect_chrome_user_data_dir"]).strip(),
+        "--chrome-profile-directory",
+        str(values["perfect_chrome_profile_directory"]).strip(),
+        "--start-at",
+        str(values["perfect_start_at"]).strip(),
+        "--delay",
+        str(values["perfect_delay"]).strip(),
+        "--batch-size",
+        str(values["perfect_batch_size"]).strip(),
+        "--upload-timeout",
+        str(values["perfect_upload_timeout"]).strip(),
+        "--download-timeout",
+        str(values["perfect_download_timeout"]).strip(),
+        "--yes",
+    ]
+
+    project_url = str(values["perfect_project_url"]).strip()
+    if project_url:
+        command.extend(["--project-url", project_url])
+
+    limit = str(values["perfect_limit"]).strip()
+    if limit:
+        command.extend(["--limit", limit])
+
+    flags = {
+        "perfect_use_current_page": "--use-current-page",
+        "perfect_keep_browser_open": "--keep-browser-open",
+        "perfect_dry_run": "--dry-run",
     }
     for key, flag in flags.items():
         if bool(values[key]):
@@ -195,19 +274,49 @@ def read_json_body(handler: SimpleHTTPRequestHandler) -> dict[str, Any]:
     return data
 
 
-def reader_thread(process: subprocess.Popen[str]) -> None:
+def run_command(label: str, command: list[str]) -> int:
+    STATE.append_log(f"\n===== {label} =====\n")
+    process = subprocess.Popen(
+        command,
+        cwd=BASE_DIR,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    STATE.process = process
+
     assert process.stdout is not None
     for line in process.stdout:
         STATE.append_log(line)
 
-    return_code = process.wait()
-    STATE.return_code = return_code
-    if return_code == 0:
+    return process.wait()
+
+
+def run_sequence(commands: list[tuple[str, list[str]]]) -> None:
+    STATE.sequence_running = True
+    STATE.return_code = None
+    try:
+        for label, command in commands:
+            return_code = run_command(label, command)
+            STATE.return_code = return_code
+            if return_code != 0:
+                STATE.append_log(f"\n{label} exited with code {return_code}.\n")
+                return
         STATE.append_log("\nAutomation finished successfully.\n")
-    elif return_code == 130:
-        STATE.append_log("\nAutomation stopped by user.\n")
-    else:
-        STATE.append_log(f"\nAutomation exited with code {return_code}.\n")
+    finally:
+        STATE.sequence_running = False
+        STATE.process = None
+
+
+def start_sequence(commands: list[tuple[str, list[str]]], first_log: str) -> None:
+    with STATE.lock:
+        STATE.logs = [first_log]
+        STATE.return_code = None
+        STATE.sequence_running = True
+
+    thread = threading.Thread(target=run_sequence, args=(commands,), daemon=True)
+    thread.start()
 
 
 class CanvaWebHandler(SimpleHTTPRequestHandler):
@@ -224,7 +333,11 @@ class CanvaWebHandler(SimpleHTTPRequestHandler):
         if path == "/api/status":
             return self.send_json(STATE.snapshot())
         if path == "/api/open-output":
-            output_dir = Path(str(merged_settings()["output_dir"])).expanduser()
+            settings = merged_settings()
+            query = urlparse(self.path).query
+            target = "perfect" if "target=perfect" in query else "canva"
+            key = "perfect_output_dir" if target == "perfect" else "output_dir"
+            output_dir = Path(str(settings[key])).expanduser()
             output_dir.mkdir(parents=True, exist_ok=True)
             os.startfile(output_dir)
             return self.send_json({"ok": True})
@@ -243,7 +356,7 @@ class CanvaWebHandler(SimpleHTTPRequestHandler):
                 )
                 return self.send_json({"ok": True, "settings": clean})
 
-            if path == "/api/start":
+            if path in {"/api/start-bg", "/api/start-perfect", "/api/start-pipeline"}:
                 if STATE.running():
                     return self.send_json(
                         {"ok": False, "error": "Automation is already running."},
@@ -251,30 +364,28 @@ class CanvaWebHandler(SimpleHTTPRequestHandler):
                     )
 
                 settings = read_json_body(self)
-                command = build_command(settings)
+                clean_settings = {
+                    key: settings.get(key, DEFAULTS[key]) for key in DEFAULTS
+                }
                 SETTINGS_PATH.write_text(
-                    json.dumps({key: settings.get(key, DEFAULTS[key]) for key in DEFAULTS}, indent=2),
+                    json.dumps(clean_settings, indent=2),
                     encoding="utf-8",
                 )
 
-                with STATE.lock:
-                    STATE.logs = ["Starting Canva automation...\n"]
-                    STATE.return_code = None
+                if path == "/api/start-bg":
+                    commands = [("Canva BG Remover", build_bg_command(clean_settings))]
+                    first_log = "Starting Canva BG remover...\n"
+                elif path == "/api/start-perfect":
+                    commands = [("Perfect Car Image", build_perfect_command(clean_settings))]
+                    first_log = "Starting perfect image generation...\n"
+                else:
+                    commands = [
+                        ("Canva BG Remover", build_bg_command(clean_settings)),
+                        ("Perfect Car Image", build_perfect_command(clean_settings)),
+                    ]
+                    first_log = "Starting full pipeline: Canva BG remover then perfect image generation...\n"
 
-                process = subprocess.Popen(
-                    command,
-                    cwd=BASE_DIR,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    bufsize=1,
-                )
-                STATE.process = process
-                threading.Thread(
-                    target=reader_thread,
-                    args=(process,),
-                    daemon=True,
-                ).start()
+                start_sequence(commands, first_log)
                 return self.send_json({"ok": True})
 
             if path == "/api/stop":

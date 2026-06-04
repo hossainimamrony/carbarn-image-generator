@@ -3,10 +3,15 @@ const logOutput = document.querySelector("#logOutput");
 const runStatus = document.querySelector("#runStatus");
 const modeLabel = document.querySelector("#modeLabel");
 const outputLabel = document.querySelector("#outputLabel");
-const startButton = document.querySelector("#startRun");
+const startButtons = [
+  document.querySelector("#startBgRun"),
+  document.querySelector("#startPerfectRun"),
+  document.querySelector("#startPipelineRun"),
+];
 const stopButton = document.querySelector("#stopRun");
 const saveButton = document.querySelector("#saveSettings");
-const openOutputButton = document.querySelector("#openOutput");
+const openCanvaOutputButton = document.querySelector("#openCanvaOutput");
+const openGeminiOutputButton = document.querySelector("#openGeminiOutput");
 const clearLogButton = document.querySelector("#clearLog");
 
 let latestLogText = "";
@@ -45,10 +50,10 @@ function updateLabels() {
   const settings = readForm();
   if (settings.single_image) {
     modeLabel.textContent = "Single image";
-  } else if (settings.skip_google_download) {
-    modeLabel.textContent = "Existing folder";
-  } else {
+  } else if (settings.download_google_photos) {
     modeLabel.textContent = "Google Photos batch";
+  } else {
+    modeLabel.textContent = "Existing folder";
   }
   outputLabel.textContent = settings.output_dir || "Not set";
 }
@@ -78,10 +83,10 @@ async function saveSettings() {
   appendClientLog("Settings saved.\n");
 }
 
-async function startRun() {
+async function startRun(path) {
   latestLogText = "";
   logOutput.textContent = "";
-  await api("/api/start", {
+  await api(path, {
     method: "POST",
     body: JSON.stringify(readForm()),
   });
@@ -93,9 +98,10 @@ async function stopRun() {
   await refreshStatus();
 }
 
-async function openOutput() {
+async function openOutput(target) {
   await saveSettings();
-  await api("/api/open-output");
+  const suffix = target === "perfect" ? "?target=perfect" : "?target=canva";
+  await api(`/api/open-output${suffix}`);
 }
 
 function appendClientLog(text) {
@@ -114,7 +120,9 @@ async function refreshStatus() {
     logOutput.scrollTop = logOutput.scrollHeight;
   }
 
-  startButton.disabled = payload.running;
+  for (const button of startButtons) {
+    button.disabled = payload.running;
+  }
   stopButton.disabled = !payload.running;
   runStatus.textContent = payload.running
     ? "Running"
@@ -134,16 +142,38 @@ saveButton.addEventListener("click", () => {
   saveSettings().catch((error) => appendClientLog(`Save failed: ${error.message}\n`));
 });
 
-startButton.addEventListener("click", () => {
-  startRun().catch((error) => appendClientLog(`Start failed: ${error.message}\n`));
+document.querySelector("#startBgRun").addEventListener("click", () => {
+  startRun("/api/start-bg").catch((error) =>
+    appendClientLog(`BG remover failed to start: ${error.message}\n`),
+  );
+});
+
+document.querySelector("#startPerfectRun").addEventListener("click", () => {
+  startRun("/api/start-perfect").catch((error) =>
+    appendClientLog(`Perfect image failed to start: ${error.message}\n`),
+  );
+});
+
+document.querySelector("#startPipelineRun").addEventListener("click", () => {
+  startRun("/api/start-pipeline").catch((error) =>
+    appendClientLog(`Pipeline failed to start: ${error.message}\n`),
+  );
 });
 
 stopButton.addEventListener("click", () => {
   stopRun().catch((error) => appendClientLog(`Stop failed: ${error.message}\n`));
 });
 
-openOutputButton.addEventListener("click", () => {
-  openOutput().catch((error) => appendClientLog(`Open output failed: ${error.message}\n`));
+openCanvaOutputButton.addEventListener("click", () => {
+  openOutput("canva").catch((error) =>
+    appendClientLog(`Open Canva output failed: ${error.message}\n`),
+  );
+});
+
+openGeminiOutputButton.addEventListener("click", () => {
+  openOutput("perfect").catch((error) =>
+    appendClientLog(`Open Gemini output failed: ${error.message}\n`),
+  );
 });
 
 clearLogButton.addEventListener("click", () => {

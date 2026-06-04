@@ -1,6 +1,6 @@
 # Canva Background Remover Automation
 
-Windows-only web UI for this automation. It can download images from a Google Photos shared album, open Canva in Chrome, run BG Remover, and save JPG output files.
+Windows-only web UI for the full car image automation. It can download images from a Google Photos shared album, open Canva in Chrome, run BG Remover, then send the cleaned images to Google Flow to create the final polished car images.
 
 ## One-Click Setup
 
@@ -72,8 +72,19 @@ The web UI lets you set:
 - Canva placement values
 - timeout values
 - batch options
+- Google Flow perfect-image input and output folders
+- Google Flow project URL
+- Google Flow batch size, delay, and timeout values
 
-Click **Start** in the web UI to run the automation. Logs appear in the live log panel.
+The main buttons are:
+
+- **BG Only**: runs only `canva_bg_remove_download.py`
+- **Perfect Only**: runs only `perfect_car_image.py`
+- **Full Pipeline**: runs Canva BG remover first, then perfect image generation
+- **Canva Output**: opens `assets\canva_download`
+- **Gemini Output**: opens `assets\perfect_car_images`
+
+Logs appear in the live log panel.
 
 ## First Canva Login
 
@@ -85,11 +96,21 @@ chrome_profiles\canva_automation_profile
 
 If Canva asks for login, log in inside the opened Chrome window. The same profile is reused next time, so you usually only need to log in once per device.
 
+## First Google Flow Login
+
+The perfect-image step opens Google Flow:
+
+```text
+https://labs.google/fx/tools/flow
+```
+
+If Google asks for login, log in inside the opened Chrome window. The automation profile is reused on the same device.
+
 ## Run Modes
 
-Default mode downloads the Google Photos album and processes every image.
+Default mode uses images already in the Google Photos folder.
 
-Enable **Use existing photos folder** if the album was already downloaded.
+Enable **Download Google Photos images** only when you want to download the album again.
 
 Enable **Process only single image** to skip Google Photos and process only the image path from the form.
 
@@ -97,13 +118,19 @@ Use **Max images** when testing with only a few images.
 
 ## Output
 
-Processed images are saved to:
+Canva background-removed images are saved to:
 
 ```text
 assets\canva_download
 ```
 
-For a batch, each output is named from the original image filename with `_bg_removed.jpg` added. For a single image, the UI uses the output name field.
+Final perfect images are saved to:
+
+```text
+assets\perfect_car_images
+```
+
+For the full pipeline, `assets\canva_download` becomes the input folder for `perfect_car_image.py`.
 
 ## Troubleshooting
 

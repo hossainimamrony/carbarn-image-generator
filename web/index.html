@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Canva BG Remover Automation</title>
+    <title>Car Image Automation</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -11,13 +11,16 @@
       <header class="topbar">
         <div>
           <p class="eyebrow">Windows local automation</p>
-          <h1>Canva BG Remover</h1>
+          <h1>Car Image Automation</h1>
         </div>
         <div class="actions">
           <button id="saveSettings" type="button">Save</button>
-          <button id="openOutput" type="button">Open Output</button>
+          <button id="openCanvaOutput" type="button">Canva Output</button>
+          <button id="openGeminiOutput" type="button">Gemini Output</button>
           <button id="stopRun" class="danger" type="button" disabled>Stop</button>
-          <button id="startRun" class="primary" type="button">Start</button>
+          <button id="startBgRun" type="button">BG Only</button>
+          <button id="startPerfectRun" type="button">Perfect Only</button>
+          <button id="startPipelineRun" class="primary" type="button">Full Pipeline</button>
         </div>
       </header>
 
@@ -28,7 +31,7 @@
         </div>
         <div>
           <span class="label">Mode</span>
-          <strong id="modeLabel">Google Photos batch</strong>
+          <strong id="modeLabel">Existing folder</strong>
         </div>
         <div>
           <span class="label">Output</span>
@@ -69,8 +72,8 @@
               <span>Process only single image</span>
             </label>
             <label class="switch-row">
-              <input name="skip_google_download" type="checkbox" />
-              <span>Use existing photos folder</span>
+              <input name="download_google_photos" type="checkbox" />
+              <span>Download Google Photos images</span>
             </label>
             <label>
               <span>Max images</span>
@@ -94,6 +97,78 @@
               <input name="keep_open" type="checkbox" />
               <span>Keep Chrome open</span>
             </label>
+          </section>
+
+          <section class="panel span-2">
+            <div class="panel-heading">
+              <h2>Perfect Image</h2>
+            </div>
+            <div class="two-col">
+              <label>
+                <span>Perfect input folder</span>
+                <input name="perfect_input_dir" type="text" />
+              </label>
+              <label>
+                <span>Perfect output folder</span>
+                <input name="perfect_output_dir" type="text" />
+              </label>
+            </div>
+            <label>
+              <span>Flow project URL</span>
+              <input name="perfect_project_url" type="url" placeholder="Blank creates a new Flow project" />
+            </label>
+            <div class="placement-grid">
+              <label>
+                <span>Flow debug port</span>
+                <input name="perfect_debug_port" type="number" min="1" />
+              </label>
+              <label>
+                <span>Start at</span>
+                <input name="perfect_start_at" type="number" min="1" />
+              </label>
+              <label>
+                <span>Limit</span>
+                <input name="perfect_limit" type="number" min="1" placeholder="All" />
+              </label>
+              <label>
+                <span>Delay</span>
+                <input name="perfect_delay" type="number" min="0" step="0.5" />
+              </label>
+              <label>
+                <span>Batch size</span>
+                <input name="perfect_batch_size" type="number" min="1" />
+              </label>
+              <label>
+                <span>Upload timeout</span>
+                <input name="perfect_upload_timeout" type="number" min="1" />
+              </label>
+              <label>
+                <span>Download timeout</span>
+                <input name="perfect_download_timeout" type="number" min="1" />
+              </label>
+              <label>
+                <span>Flow profile name</span>
+                <input name="perfect_chrome_profile_directory" type="text" />
+              </label>
+            </div>
+            <label>
+              <span>Flow Chrome profile folder</span>
+              <input name="perfect_chrome_user_data_dir" type="text" />
+            </label>
+            <div class="option-row">
+              <label class="switch-row">
+                <input name="perfect_use_current_page" type="checkbox" />
+                <span>Use current Flow page</span>
+              </label>
+              <label class="switch-row">
+                <input name="perfect_keep_browser_open" type="checkbox" />
+                <span>Keep Flow Chrome open</span>
+              </label>
+              <label class="switch-row">
+                <input name="perfect_dry_run" type="checkbox" />
+                <span>Dry run</span>
+              </label>
+            </div>
           </section>
 
           <section class="panel span-2">
@@ -164,37 +239,6 @@
             </label>
           </section>
 
-          <section class="panel span-2">
-            <div class="panel-heading">
-              <h2>Timeouts</h2>
-            </div>
-            <div class="timeout-grid">
-              <label>
-                <span>Manual login</span>
-                <input name="login_timeout" type="number" min="1" />
-              </label>
-              <label>
-                <span>Editor load</span>
-                <input name="editor_timeout" type="number" min="1" />
-              </label>
-              <label>
-                <span>Upload</span>
-                <input name="upload_timeout" type="number" min="1" />
-              </label>
-              <label>
-                <span>BG remover</span>
-                <input name="bg_remove_timeout" type="number" min="1" />
-              </label>
-              <label>
-                <span>Canva download</span>
-                <input name="download_timeout" type="number" min="1" />
-              </label>
-              <label>
-                <span>Google download</span>
-                <input name="google_download_timeout" type="number" min="1" />
-              </label>
-            </div>
-          </section>
         </form>
 
         <aside class="log-panel">

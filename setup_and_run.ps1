@@ -70,6 +70,7 @@ $folders = @(
     "assets",
     "assets\canva_download",
     "assets\google_photos_downloads",
+    "assets\perfect_car_images",
     "chrome_profiles"
 )
 
