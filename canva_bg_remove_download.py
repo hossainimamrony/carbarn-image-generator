@@ -80,6 +80,14 @@ def parse_args() -> argparse.Namespace:
         help="Seconds to wait for Canva's download to start.",
     )
     parser.add_argument(
+        "--skip-download-settings",
+        action="store_true",
+        help=(
+            "Use Canva's saved download preferences and click the final "
+            "Download button without changing file type or quality."
+        ),
+    )
+    parser.add_argument(
         "--google-download-timeout",
         type=int,
         default=600,
@@ -775,7 +783,7 @@ def ratio_lock_looks_locked(page: Any) -> bool | None:
 def ensure_ratio_locked_before_width(page: Any) -> None:
     state = ratio_lock_looks_locked(page)
     if state is True:
-        print("Ratio is locked.")
+        print("Ratio is already locked before setting final width.")
         return
     if state is False:
         toggle_ratio_lock_if_available(page, "Ratio locked before setting final width.")
@@ -930,6 +938,26 @@ def first_number(text: str) -> float | None:
     return float(match.group(0).replace(",", ""))
 
 
+def proportional_height(
+    before_width: float | None, before_height: float | None, target_width: str
+) -> float | None:
+    target_number = first_number(target_width)
+    if (
+        before_width is None
+        or before_height is None
+        or target_number is None
+        or before_width <= 0
+    ):
+        return None
+    return before_height * target_number / before_width
+
+
+def height_matches_ratio(actual_height: float | None, expected_height: float | None) -> bool:
+    if actual_height is None or expected_height is None:
+        return False
+    return abs(actual_height - expected_height) <= 2.0
+
+
 def position_panel_input(page: Any, label_text: str) -> Any | None:
     handle = page.evaluate_handle(
         """
@@ -1055,9 +1083,11 @@ def set_image_size_and_position(
             recover_position_panel(page)
             before_width = first_number(read_labeled_value(page, "Width"))
             before_height = first_number(read_labeled_value(page, "Height"))
+            expected_ratio_height = proportional_height(before_width, before_height, width)
             if lock_ratio_for_width and height is None:
+                print("Locking Ratio before setting final Width.")
                 ensure_ratio_locked_before_width(page)
-                open_position_panel(page)
+                recover_position_panel(page)
 
             fill_labeled_value(page, "Width", width)
             after_width = first_number(read_labeled_value(page, "Width"))
@@ -1066,19 +1096,23 @@ def set_image_size_and_position(
             if (
                 lock_ratio_for_width
                 and height is None
-                and before_width is not None
-                and before_height is not None
                 and after_width is not None
                 and after_height is not None
-                and first_number(width) is not None
-                and abs(before_width - first_number(width)) > 1.0
-                and abs(after_height - before_height) <= 0.2
+                and expected_ratio_height is not None
+                and not height_matches_ratio(after_height, expected_ratio_height)
             ):
                 toggle_ratio_lock_if_available(
-                    page, "Height did not update after Width changed; toggled Ratio lock."
+                    page,
+                    "Height did not follow Width after Ratio lock; toggled Ratio lock and retrying Width.",
                 )
                 recover_position_panel(page)
                 fill_labeled_value(page, "Width", width)
+                after_height = first_number(read_labeled_value(page, "Height"))
+                if not height_matches_ratio(after_height, expected_ratio_height):
+                    raise RuntimeError(
+                        "Ratio lock did not keep Height proportional after setting Width."
+                    )
+                print(f"Ratio lock verified: Height adjusted to {after_height:g} px.")
 
             if height is not None:
                 fill_labeled_value(page, "Height", height)
@@ -1473,16 +1507,40 @@ def click_final_download_button(page: Any) -> bool:
 def click_final_download(page: Any, output_path: Path, timeout_seconds: int) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with page.expect_download(timeout=timeout_seconds * 1000) as download_info:
-        if not click_final_download_button(page):
-            raise RuntimeError("Could not click the final Canva Download button.")
+    attempt_timeout = min(max(timeout_seconds // 3, 30), 90)
+    deadline = time.time() + timeout_seconds
+    last_error: Exception | None = None
+    attempt = 1
 
-    download = download_info.value
-    download.save_as(str(output_path))
-    print(f"Downloaded file saved to: {output_path}")
+    while time.time() < deadline:
+        remaining = max(5, int(deadline - time.time()))
+        current_timeout = min(attempt_timeout, remaining)
+        print(
+            f"Starting Canva download attempt {attempt} "
+            f"(waiting up to {current_timeout}s)..."
+        )
+        try:
+            with page.expect_download(timeout=current_timeout * 1000) as download_info:
+                if not click_final_download_button(page):
+                    raise RuntimeError("Could not click the final Canva Download button.")
+
+            download = download_info.value
+            download.save_as(str(output_path))
+            print(f"Downloaded file saved to: {output_path}")
+            return
+        except Exception as exc:
+            last_error = exc
+            print(
+                f"Canva download did not start on attempt {attempt}; "
+                "retrying final Download button..."
+            )
+            attempt += 1
+            page.wait_for_timeout(1000)
+
+    raise RuntimeError("Canva download did not start in time.") from last_error
 
 
-def close_share_or_download_panels(page: Any, timeout_seconds: int = 6) -> None:
+def close_share_or_download_panels(page: Any, timeout_seconds: float = 2.0) -> None:
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
         panel_markers = [
@@ -1491,10 +1549,10 @@ def close_share_or_download_panels(page: Any, timeout_seconds: int = 6) -> None:
             page.get_by_text(re.compile(r"Quality", re.I)),
             page.get_by_text(re.compile(r"PDF Standard|PDF Print|SVG|MP4 Video", re.I)),
         ]
-        if not any(safe_is_visible(marker, timeout=250) for marker in panel_markers):
+        if not any(safe_is_visible(marker, timeout=100) for marker in panel_markers):
             return
         page.keyboard.press("Escape")
-        page.wait_for_timeout(500)
+        page.wait_for_timeout(150)
 
 
 def selection_toolbar_visible(page: Any) -> bool:
@@ -1506,7 +1564,7 @@ def selection_toolbar_visible(page: Any) -> bool:
     return any(safe_is_visible(marker, timeout=250) for marker in markers)
 
 
-def wait_for_selection_to_clear(page: Any, timeout_seconds: int = 20) -> bool:
+def wait_for_selection_to_clear(page: Any, timeout_seconds: float = 20.0) -> bool:
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
         if not selection_toolbar_visible(page):
@@ -1542,14 +1600,14 @@ def right_click_delete_selected_image(page: Any) -> bool:
     return False
 
 
-def cleanup_canvas_image(page: Any, timeout_seconds: int = 20) -> None:
+def cleanup_canvas_image(page: Any, timeout_seconds: float = 12.0) -> None:
     print("Cleaning Canva page for the next image...")
     close_share_or_download_panels(page)
 
-    ensure_image_selected(page, timeout_seconds=8)
+    ensure_image_selected(page, timeout_seconds=4)
 
     page.keyboard.press("Delete")
-    if wait_for_selection_to_clear(page, timeout_seconds=4):
+    if wait_for_selection_to_clear(page, timeout_seconds=2.5):
         print("Canvas image deleted.")
         return
 
@@ -1558,12 +1616,12 @@ def cleanup_canvas_image(page: Any, timeout_seconds: int = 20) -> None:
         ("right-click Delete", right_click_delete_selected_image),
     ]
     for label, action in delete_attempts:
-        if action(page) and wait_for_selection_to_clear(page, timeout_seconds=8):
+        if action(page) and wait_for_selection_to_clear(page, timeout_seconds=4):
             print("Canvas image deleted.")
             return
         print(f"{label} did not clear the selected image; trying next delete method.")
 
-    ensure_image_selected(page, timeout_seconds=5)
+    ensure_image_selected(page, timeout_seconds=3)
     page.keyboard.press("Delete")
     if wait_for_selection_to_clear(page, timeout_seconds=timeout_seconds):
         print("Canvas image deleted.")
@@ -1630,8 +1688,11 @@ def process_image_in_canva(
         lock_ratio_for_width=True,
     )
     open_download_panel(page)
-    ensure_jpg_file_type(page)
-    set_quality_to_100(page)
+    if args.skip_download_settings:
+        print("Using saved Canva download preferences; clicking Download immediately.")
+    else:
+        ensure_jpg_file_type(page)
+        set_quality_to_100(page)
     click_final_download(page, output_path, args.download_timeout)
     cleanup_canvas_image(page)
 

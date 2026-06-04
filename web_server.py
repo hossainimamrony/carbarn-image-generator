@@ -280,6 +280,7 @@ def build_bg_command(settings: dict[str, Any]) -> list[str]:
         str(values["bg_remove_timeout"]).strip(),
         "--download-timeout",
         str(values["download_timeout"]).strip(),
+        "--skip-download-settings",
         "--google-download-timeout",
         str(values["google_download_timeout"]).strip(),
         "--fallback-thumbnail-x",
