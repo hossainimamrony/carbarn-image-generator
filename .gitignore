@@ -1,0 +1,13 @@
+__pycache__/
+chrome_profiles/
+assets/canva_download/
+assets/google_photos_downloads/
+assets/perfect_car_images/
+
+# Old generated locations, kept ignored in case they reappear.
+chrome_automation_profile/
+canva_automation_profile/
+canva_session_state.json
+canva_downloads/
+google_photos_downloads/
+perfect_car_images/
