@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Canva BG Remover Automation</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Windows local automation</p>
+          <h1>Canva BG Remover</h1>
+        </div>
+        <div class="actions">
+          <button id="saveSettings" type="button">Save</button>
+          <button id="openOutput" type="button">Open Output</button>
+          <button id="stopRun" class="danger" type="button" disabled>Stop</button>
+          <button id="startRun" class="primary" type="button">Start</button>
+        </div>
+      </header>
+
+      <section class="status-strip">
+        <div>
+          <span class="label">Status</span>
+          <strong id="runStatus">Idle</strong>
+        </div>
+        <div>
+          <span class="label">Mode</span>
+          <strong id="modeLabel">Google Photos batch</strong>
+        </div>
+        <div>
+          <span class="label">Output</span>
+          <strong id="outputLabel">assets\canva_download</strong>
+        </div>
+      </section>
+
+      <section class="workspace">
+        <form id="settingsForm" class="form-grid">
+          <section class="panel span-2">
+            <div class="panel-heading">
+              <h2>Source</h2>
+            </div>
+            <label>
+              <span>Canva design URL</span>
+              <input name="design_url" type="url" />
+            </label>
+            <label>
+              <span>Google Photos URL</span>
+              <input name="photos_url" type="url" />
+            </label>
+            <label>
+              <span>Single image path</span>
+              <input name="image" type="text" />
+            </label>
+            <label>
+              <span>Google Photos folder</span>
+              <input name="photos_dir" type="text" />
+            </label>
+          </section>
+
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>Run Mode</h2>
+            </div>
+            <label class="switch-row">
+              <input name="single_image" type="checkbox" />
+              <span>Process only single image</span>
+            </label>
+            <label class="switch-row">
+              <input name="skip_google_download" type="checkbox" />
+              <span>Use existing photos folder</span>
+            </label>
+            <label>
+              <span>Max images</span>
+              <input name="max_images" type="number" min="1" placeholder="All" />
+            </label>
+          </section>
+
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>Output</h2>
+            </div>
+            <label>
+              <span>Output folder</span>
+              <input name="output_dir" type="text" />
+            </label>
+            <label>
+              <span>Single output name</span>
+              <input name="output_name" type="text" />
+            </label>
+            <label class="switch-row">
+              <input name="keep_open" type="checkbox" />
+              <span>Keep Chrome open</span>
+            </label>
+          </section>
+
+          <section class="panel span-2">
+            <div class="panel-heading">
+              <h2>Chrome</h2>
+            </div>
+            <div class="two-col">
+              <label>
+                <span>Chrome EXE</span>
+                <input name="chrome_exe" type="text" />
+              </label>
+              <label>
+                <span>Debug port</span>
+                <input name="debug_port" type="number" min="1" />
+              </label>
+            </div>
+            <label>
+              <span>Chrome profile folder</span>
+              <input name="profile_dir" type="text" />
+            </label>
+          </section>
+
+          <section class="panel span-2">
+            <div class="panel-heading">
+              <h2>Canvas Placement</h2>
+            </div>
+            <div class="placement-grid">
+              <label>
+                <span>Initial width</span>
+                <input name="initial_width" type="text" />
+              </label>
+              <label>
+                <span>Initial height</span>
+                <input name="initial_height" type="text" />
+              </label>
+              <label>
+                <span>Initial X</span>
+                <input name="initial_x" type="text" />
+              </label>
+              <label>
+                <span>Initial Y</span>
+                <input name="initial_y" type="text" />
+              </label>
+              <label>
+                <span>Target width</span>
+                <input name="target_width" type="text" />
+              </label>
+              <label>
+                <span>Target X</span>
+                <input name="target_x" type="text" />
+              </label>
+              <label>
+                <span>Target Y</span>
+                <input name="target_y" type="text" />
+              </label>
+              <label>
+                <span>Fallback thumb X</span>
+                <input name="fallback_thumbnail_x" type="number" />
+              </label>
+              <label>
+                <span>Fallback thumb Y</span>
+                <input name="fallback_thumbnail_y" type="number" />
+              </label>
+            </div>
+            <label class="switch-row inline-option">
+              <input name="skip_initial_fit" type="checkbox" />
+              <span>Skip initial full-canvas sizing</span>
+            </label>
+          </section>
+
+          <section class="panel span-2">
+            <div class="panel-heading">
+              <h2>Timeouts</h2>
+            </div>
+            <div class="timeout-grid">
+              <label>
+                <span>Manual login</span>
+                <input name="login_timeout" type="number" min="1" />
+              </label>
+              <label>
+                <span>Editor load</span>
+                <input name="editor_timeout" type="number" min="1" />
+              </label>
+              <label>
+                <span>Upload</span>
+                <input name="upload_timeout" type="number" min="1" />
+              </label>
+              <label>
+                <span>BG remover</span>
+                <input name="bg_remove_timeout" type="number" min="1" />
+              </label>
+              <label>
+                <span>Canva download</span>
+                <input name="download_timeout" type="number" min="1" />
+              </label>
+              <label>
+                <span>Google download</span>
+                <input name="google_download_timeout" type="number" min="1" />
+              </label>
+            </div>
+          </section>
+        </form>
+
+        <aside class="log-panel">
+          <div class="panel-heading">
+            <h2>Live Log</h2>
+            <button id="clearLog" type="button">Clear</button>
+          </div>
+          <pre id="logOutput"></pre>
+        </aside>
+      </section>
+    </main>
+    <script src="app.js"></script>
+  </body>
+</html>

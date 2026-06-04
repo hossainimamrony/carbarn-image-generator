@@ -47,6 +47,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-name", default=DEFAULT_OUTPUT_NAME)
     parser.add_argument("--debug-port", type=int, default=DEFAULT_DEBUG_PORT)
     parser.add_argument("--profile-dir", default=str(DEFAULT_PROFILE_DIR))
+    parser.add_argument("--chrome-exe", default=CHROME_EXE_PATH)
     parser.add_argument(
         "--login-timeout",
         type=int,
@@ -173,13 +174,13 @@ def remove_stale_profile_locks(profile_dir: Path) -> None:
 
 
 def launch_chrome(
-    port: int, profile_dir: Path, startup_url: str
+    port: int, profile_dir: Path, startup_url: str, chrome_exe_path: str = CHROME_EXE_PATH
 ) -> subprocess.Popen[Any] | None:
     if debugging_endpoint_ready(port):
         print(f"Reusing Chrome already listening on port {port}.")
         return None
 
-    chrome_path = Path(CHROME_EXE_PATH)
+    chrome_path = Path(chrome_exe_path)
     if not chrome_path.exists():
         raise FileNotFoundError(f"Chrome was not found at: {chrome_path}")
 
@@ -1489,7 +1490,9 @@ def main() -> int:
         if args.single_image or args.skip_google_download
         else args.photos_url
     )
-    chrome_process = launch_chrome(args.debug_port, profile_dir, startup_url)
+    chrome_process = launch_chrome(
+        args.debug_port, profile_dir, startup_url, args.chrome_exe
+    )
 
     with sync_playwright() as playwright:
         browser = playwright.chromium.connect_over_cdp(
