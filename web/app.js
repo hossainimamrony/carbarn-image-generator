@@ -4,9 +4,9 @@ const runStatus = document.querySelector("#runStatus");
 const modeLabel = document.querySelector("#modeLabel");
 const outputLabel = document.querySelector("#outputLabel");
 const startButtons = [
+  document.querySelector("#startDownloadRun"),
   document.querySelector("#startBgRun"),
   document.querySelector("#startPerfectRun"),
-  document.querySelector("#startPipelineRun"),
 ];
 const stopButton = document.querySelector("#stopRun");
 const saveButton = document.querySelector("#saveSettings");
@@ -58,8 +58,6 @@ function updateLabels() {
     .replace(/^[._-]+|[._-]+$/g, "");
   if (settings.single_image) {
     modeLabel.textContent = "Single image";
-  } else if (settings.download_google_photos) {
-    modeLabel.textContent = "Google Photos batch";
   } else {
     modeLabel.textContent = "Existing folder";
   }
@@ -185,6 +183,12 @@ saveButton.addEventListener("click", () => {
   saveSettings().catch((error) => appendClientLog(`Save failed: ${error.message}\n`));
 });
 
+document.querySelector("#startDownloadRun").addEventListener("click", () => {
+  startRun("/api/start-download").catch((error) =>
+    appendClientLog(`Download failed to start: ${error.message}\n`),
+  );
+});
+
 document.querySelector("#startBgRun").addEventListener("click", () => {
   startRun("/api/start-bg").catch((error) =>
     appendClientLog(`Canva failed to start: ${error.message}\n`),
@@ -194,12 +198,6 @@ document.querySelector("#startBgRun").addEventListener("click", () => {
 document.querySelector("#startPerfectRun").addEventListener("click", () => {
   startRun("/api/start-perfect").catch((error) =>
     appendClientLog(`Flow failed to start: ${error.message}\n`),
-  );
-});
-
-document.querySelector("#startPipelineRun").addEventListener("click", () => {
-  startRun("/api/start-pipeline").catch((error) =>
-    appendClientLog(`Pipeline failed to start: ${error.message}\n`),
   );
 });
 

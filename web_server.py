@@ -39,6 +39,7 @@ from perfect_car_image import (
 HOST = "127.0.0.1"
 PORT = 8765
 WEB_DIR = BASE_DIR / "web"
+DOWNLOAD_SCRIPT_PATH = BASE_DIR / "google_photos_download.py"
 BG_SCRIPT_PATH = BASE_DIR / "canva_bg_remove_download.py"
 PERFECT_SCRIPT_PATH = BASE_DIR / "perfect_car_image.py"
 SETTINGS_PATH = BASE_DIR / "canva_web_settings.json"
@@ -143,6 +144,14 @@ def effective_canva_output_dir(settings: dict[str, Any]) -> Path:
     return base
 
 
+def effective_photos_dir(settings: dict[str, Any]) -> Path:
+    base = Path(str(settings.get("photos_dir", DEFAULT_GOOGLE_PHOTOS_DIR))).expanduser()
+    stock_slug = sanitize_stock_id(str(settings.get("stock_id", "")))
+    if stock_slug:
+        return base / stock_slug / "photos"
+    return base
+
+
 def effective_flow_input_dir(settings: dict[str, Any]) -> Path:
     override = settings.get("_flow_input_dir")
     if override:
@@ -153,6 +162,29 @@ def effective_flow_input_dir(settings: dict[str, Any]) -> Path:
     if stock_slug:
         return base / stock_slug / "canva"
     return base
+
+
+def build_download_command(settings: dict[str, Any]) -> list[str]:
+    values = DEFAULTS.copy()
+    values.update(settings)
+
+    return [
+        sys.executable,
+        "-u",
+        str(DOWNLOAD_SCRIPT_PATH),
+        "--photos-url",
+        str(values["photos_url"]).strip(),
+        "--photos-dir",
+        str(effective_photos_dir(values)),
+        "--chrome-exe",
+        str(values["chrome_exe"]).strip(),
+        "--profile-dir",
+        str(values["profile_dir"]).strip(),
+        "--debug-port",
+        str(values["debug_port"]).strip(),
+        "--google-download-timeout",
+        str(values["google_download_timeout"]).strip(),
+    ]
 
 
 def effective_flow_output_dir(settings: dict[str, Any]) -> Path:
@@ -225,7 +257,7 @@ def build_bg_command(settings: dict[str, Any]) -> list[str]:
         "--image",
         str(values["image"]).strip(),
         "--photos-dir",
-        str(values["photos_dir"]).strip(),
+        str(effective_photos_dir(values)),
         "--output-dir",
         str(effective_canva_output_dir(values)),
         "--output-name",
@@ -274,7 +306,7 @@ def build_bg_command(settings: dict[str, Any]) -> list[str]:
     if max_images:
         command.extend(["--max-images", max_images])
 
-    if not bool(values["single_image"]) and not bool(values["download_google_photos"]):
+    if not bool(values["single_image"]):
         command.append("--skip-google-download")
 
     flags = {
@@ -473,7 +505,7 @@ class CanvaWebHandler(SimpleHTTPRequestHandler):
                 STATE.append_log("\nFlow resume requested.\n")
                 return self.send_json({"ok": True})
 
-            if path in {"/api/start-bg", "/api/start-perfect", "/api/start-pipeline"}:
+            if path in {"/api/start-download", "/api/start-bg", "/api/start-perfect"}:
                 if STATE.running():
                     return self.send_json(
                         {"ok": False, "error": "Automation is already running."},
@@ -491,21 +523,15 @@ class CanvaWebHandler(SimpleHTTPRequestHandler):
                 )
                 set_flow_paused(False)
 
-                if path == "/api/start-bg":
+                if path == "/api/start-download":
+                    commands = [("Download Photos", build_download_command(clean_settings))]
+                    first_log = "Starting Google Photos download...\n"
+                elif path == "/api/start-bg":
                     commands = [("Canva", build_bg_command(clean_settings))]
                     first_log = "Starting Canva automation...\n"
-                elif path == "/api/start-perfect":
+                else:
                     commands = [("Flow", build_perfect_command(clean_settings))]
                     first_log = "Starting Flow automation...\n"
-                else:
-                    clean_settings["_flow_input_dir"] = str(
-                        effective_canva_output_dir(clean_settings)
-                    )
-                    commands = [
-                        ("Canva", build_bg_command(clean_settings)),
-                        ("Flow", build_perfect_command(clean_settings)),
-                    ]
-                    first_log = "Starting full pipeline: Canva then Flow...\n"
 
                 start_sequence(commands, first_log)
                 return self.send_json({"ok": True})

@@ -77,11 +77,11 @@ The web UI lets you set:
 - Google Flow project URL
 - Google Flow batch size, delay, and timeout values
 
-The main buttons are:
+The main buttons are separate jobs:
 
+- **Download Photos**: downloads Google Photos images only
 - **Canva Only**: runs only `canva_bg_remove_download.py`
 - **Flow Only**: runs only `perfect_car_image.py`
-- **Full Pipeline**: runs Canva BG remover first, then perfect image generation
 - **Pause Flow**: pauses before the next major Flow action so you can change model/settings
 - **Resume Flow**: continues Flow automation after a pause
 - **Canva Output**: opens `assets\canva_download`
@@ -113,15 +113,21 @@ If Google asks for login, log in inside the opened Chrome window. The automation
 
 ## Run Modes
 
-Default mode uses images already in the Google Photos folder.
+Default Canva mode uses images already in the Google Photos folder.
 
-Enable **Download Google Photos images** only when you want to download the album again.
+Use **Download Photos** only when you want to download the album again.
 
 Enable **Process only single image** to skip Google Photos and process only the image path from the form.
 
 Use **Max images** when testing with only a few images.
 
 ## Output
+
+Downloaded Google Photos images are saved under:
+
+```text
+assets\google_photos_downloads\<STOCK_ID>\photos
+```
 
 Canva background-removed images are saved to:
 
@@ -142,7 +148,7 @@ Files are named from the stock ID and image number:
 <STOCK_ID>_001_flow_final.jpg
 ```
 
-For the full pipeline, the stock-specific Canva folder becomes the input folder for `perfect_car_image.py`.
+The steps are intentionally separate. Run **Download Photos**, then **Canva Only**, then **Flow Only** when each stage is ready.
 
 ## Troubleshooting
 
