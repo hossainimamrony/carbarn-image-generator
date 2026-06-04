@@ -62,17 +62,18 @@ Everything Python-related is installed by `setup_and_run.bat`.
 
 The web UI lets you set:
 
+- stock ID for unique folder and file naming
 - Canva design URL
 - Google Photos shared album URL
 - single image path
 - Google Photos download folder
-- output folder and output file name
+- Canva output root and output file name
 - Chrome EXE path
 - Chrome automation profile folder
 - debug port
 - timeout values
 - batch options
-- Google Flow perfect-image input and output folders
+- Google Flow input and output roots
 - Google Flow project URL
 - Google Flow batch size, delay, and timeout values
 
@@ -125,16 +126,23 @@ Use **Max images** when testing with only a few images.
 Canva background-removed images are saved to:
 
 ```text
-assets\canva_download
+assets\canva_download\<STOCK_ID>\canva
 ```
 
 Final perfect images are saved to:
 
 ```text
-assets\perfect_car_images
+assets\perfect_car_images\<STOCK_ID>\flow
 ```
 
-For the full pipeline, `assets\canva_download` becomes the input folder for `perfect_car_image.py`.
+Files are named from the stock ID and image number:
+
+```text
+<STOCK_ID>_001_canva_bg_removed.jpg
+<STOCK_ID>_001_flow_final.jpg
+```
+
+For the full pipeline, the stock-specific Canva folder becomes the input folder for `perfect_car_image.py`.
 
 ## Troubleshooting
 

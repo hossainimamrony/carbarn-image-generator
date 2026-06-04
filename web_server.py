@@ -79,6 +79,7 @@ def flow_paused() -> bool:
 
 
 DEFAULTS: dict[str, Any] = {
+    "stock_id": "",
     "design_url": DEFAULT_DESIGN_URL,
     "photos_url": DEFAULT_GOOGLE_PHOTOS_URL,
     "image": str(DEFAULT_IMAGE_PATH),
@@ -126,6 +127,40 @@ DEFAULTS: dict[str, Any] = {
     "perfect_dry_run": False,
     "flow_prompt": PERFECT_CAR_PROMPT,
 }
+
+
+def sanitize_stock_id(stock_id: str) -> str:
+    cleaned = "".join(char if char.isalnum() or char in "._-" else "_" for char in stock_id.strip())
+    cleaned = cleaned.strip("._-")
+    return cleaned
+
+
+def effective_canva_output_dir(settings: dict[str, Any]) -> Path:
+    base = Path(str(settings.get("output_dir", DEFAULT_OUTPUT_DIR))).expanduser()
+    stock_slug = sanitize_stock_id(str(settings.get("stock_id", "")))
+    if stock_slug:
+        return base / stock_slug / "canva"
+    return base
+
+
+def effective_flow_input_dir(settings: dict[str, Any]) -> Path:
+    override = settings.get("_flow_input_dir")
+    if override:
+        return Path(str(override)).expanduser()
+
+    base = Path(str(settings.get("perfect_input_dir", PERFECT_DEFAULT_INPUT_DIR))).expanduser()
+    stock_slug = sanitize_stock_id(str(settings.get("stock_id", "")))
+    if stock_slug:
+        return base / stock_slug / "canva"
+    return base
+
+
+def effective_flow_output_dir(settings: dict[str, Any]) -> Path:
+    base = Path(str(settings.get("perfect_output_dir", PERFECT_DEFAULT_OUTPUT_DIR))).expanduser()
+    stock_slug = sanitize_stock_id(str(settings.get("stock_id", "")))
+    if stock_slug:
+        return base / stock_slug / "flow"
+    return base
 
 
 class AutomationState:
@@ -176,7 +211,8 @@ def merged_settings() -> dict[str, Any]:
 
 def build_bg_command(settings: dict[str, Any]) -> list[str]:
     values = DEFAULTS.copy()
-    values.update({key: settings.get(key, DEFAULTS[key]) for key in DEFAULTS})
+    values.update(settings)
+    stock_id = sanitize_stock_id(str(values.get("stock_id", "")))
 
     command = [
         sys.executable,
@@ -191,9 +227,11 @@ def build_bg_command(settings: dict[str, Any]) -> list[str]:
         "--photos-dir",
         str(values["photos_dir"]).strip(),
         "--output-dir",
-        str(values["output_dir"]).strip(),
+        str(effective_canva_output_dir(values)),
         "--output-name",
         str(values["output_name"]).strip(),
+        "--stock-id",
+        stock_id,
         "--chrome-exe",
         str(values["chrome_exe"]).strip(),
         "--profile-dir",
@@ -253,16 +291,19 @@ def build_bg_command(settings: dict[str, Any]) -> list[str]:
 
 def build_perfect_command(settings: dict[str, Any]) -> list[str]:
     values = DEFAULTS.copy()
-    values.update({key: settings.get(key, DEFAULTS[key]) for key in DEFAULTS})
+    values.update(settings)
+    stock_id = sanitize_stock_id(str(values.get("stock_id", "")))
 
     command = [
         sys.executable,
         "-u",
         str(PERFECT_SCRIPT_PATH),
         "--input-dir",
-        str(values["perfect_input_dir"]).strip(),
+        str(effective_flow_input_dir(values)),
         "--output-dir",
-        str(values["perfect_output_dir"]).strip(),
+        str(effective_flow_output_dir(values)),
+        "--stock-id",
+        stock_id,
         "--debug-port",
         str(values["perfect_debug_port"]).strip(),
         "--chrome-user-data-dir",
@@ -393,8 +434,11 @@ class CanvaWebHandler(SimpleHTTPRequestHandler):
             settings = merged_settings()
             query = urlparse(self.path).query
             target = "perfect" if "target=perfect" in query else "canva"
-            key = "perfect_output_dir" if target == "perfect" else "output_dir"
-            output_dir = Path(str(settings[key])).expanduser()
+            output_dir = (
+                effective_flow_output_dir(settings)
+                if target == "perfect"
+                else effective_canva_output_dir(settings)
+            )
             output_dir.mkdir(parents=True, exist_ok=True)
             os.startfile(output_dir)
             return self.send_json({"ok": True})
@@ -454,6 +498,9 @@ class CanvaWebHandler(SimpleHTTPRequestHandler):
                     commands = [("Flow", build_perfect_command(clean_settings))]
                     first_log = "Starting Flow automation...\n"
                 else:
+                    clean_settings["_flow_input_dir"] = str(
+                        effective_canva_output_dir(clean_settings)
+                    )
                     commands = [
                         ("Canva", build_bg_command(clean_settings)),
                         ("Flow", build_perfect_command(clean_settings)),

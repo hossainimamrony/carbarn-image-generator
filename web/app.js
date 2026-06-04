@@ -52,6 +52,10 @@ function writeForm(settings) {
 
 function updateLabels() {
   const settings = readForm();
+  const stockId = String(settings.stock_id || "")
+    .trim()
+    .replace(/[^a-z0-9._-]+/gi, "_")
+    .replace(/^[._-]+|[._-]+$/g, "");
   if (settings.single_image) {
     modeLabel.textContent = "Single image";
   } else if (settings.download_google_photos) {
@@ -59,7 +63,9 @@ function updateLabels() {
   } else {
     modeLabel.textContent = "Existing folder";
   }
-  outputLabel.textContent = settings.output_dir || "Not set";
+  outputLabel.textContent = stockId
+    ? `${settings.output_dir}\\${stockId}`
+    : settings.output_dir || "Not set";
 }
 
 async function api(path, options = {}) {

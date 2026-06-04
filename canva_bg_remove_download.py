@@ -45,6 +45,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--photos-dir", default=str(DEFAULT_GOOGLE_PHOTOS_DIR))
     parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR))
     parser.add_argument("--output-name", default=DEFAULT_OUTPUT_NAME)
+    parser.add_argument("--stock-id", default="")
     parser.add_argument("--debug-port", type=int, default=DEFAULT_DEBUG_PORT)
     parser.add_argument("--profile-dir", default=str(DEFAULT_PROFILE_DIR))
     parser.add_argument("--chrome-exe", default=CHROME_EXE_PATH)
@@ -215,6 +216,12 @@ def sanitize_filename(name: str) -> str:
     cleaned = re.sub(r'[<>:"/\\\\|?*]+', "_", name).strip()
     cleaned = re.sub(r"\s+", " ", cleaned)
     return cleaned or "downloaded_image"
+
+
+def sanitize_stock_id(stock_id: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", stock_id.strip())
+    cleaned = cleaned.strip("._-")
+    return cleaned or ""
 
 
 def unique_path(path: Path) -> Path:
@@ -1475,8 +1482,16 @@ def cleanup_canvas_image(page: Any, timeout_seconds: int = 20) -> None:
 
 
 def output_path_for_image(
-    image_path: Path, output_dir: Path, output_name: str, image_count: int
+    image_path: Path,
+    output_dir: Path,
+    output_name: str,
+    image_count: int,
+    index: int,
+    stock_id: str,
 ) -> Path:
+    stock_slug = sanitize_stock_id(stock_id)
+    if stock_slug:
+        return unique_path(output_dir / f"{stock_slug}_{index:03d}_canva_bg_removed.jpg")
     if image_count == 1 and output_name:
         return output_dir / output_name
     return unique_path(output_dir / f"{image_path.stem}_bg_removed.jpg")
@@ -1589,6 +1604,8 @@ def main() -> int:
                     output_dir,
                     args.output_name,
                     len(images),
+                    index,
+                    args.stock_id,
                 )
                 print("")
                 print(

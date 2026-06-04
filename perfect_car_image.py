@@ -176,6 +176,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--input-dir", default=str(DEFAULT_INPUT_DIR))
     parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR))
+    parser.add_argument("--stock-id", default="")
     parser.add_argument(
         "--project-url",
         default=None,
@@ -661,7 +662,18 @@ def unique_path(path: Path) -> Path:
         index += 1
 
 
-def output_base_for_image(output_dir: Path, image_path: Path) -> Path:
+def sanitize_stock_id(stock_id: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", stock_id.strip())
+    cleaned = cleaned.strip("._-")
+    return cleaned or ""
+
+
+def output_base_for_image(
+    output_dir: Path, image_path: Path, index: int, image_count: int, stock_id: str
+) -> Path:
+    stock_slug = sanitize_stock_id(stock_id)
+    if stock_slug:
+        return output_dir / f"{stock_slug}_{index:03d}_flow_final"
     return unique_path(output_dir / f"{image_path.stem}_perfect")
 
 
@@ -1886,6 +1898,7 @@ def process_images(
     batch_size: int,
     prompt_file: Path,
     control_file: Path,
+    stock_id: str,
 ) -> list[Path]:
     saved_files: list[Path] = []
 
@@ -1940,8 +1953,9 @@ def process_images(
         # Flow usually shows newest outputs first, so reverse the visible batch to map
         # back to the submit order in this batch.
         ordered_entries = list(reversed(new_entries))
-        for image_path, new_entry in zip(batch, ordered_entries):
-            output_base = output_base_for_image(output_dir, image_path)
+        for output_offset, (image_path, new_entry) in enumerate(zip(batch, ordered_entries), start=1):
+            image_index = batch_start + output_offset
+            output_base = output_base_for_image(output_dir, image_path, image_index, len(images), stock_id)
             saved_path = save_generated_media(
                 context,
                 new_entry["element"],
@@ -2021,6 +2035,7 @@ def main() -> int:
                 args.batch_size,
                 prompt_file,
                 control_file,
+                args.stock_id,
             )
             print("")
             print(f"Saved {len(saved_files)} Flow output file(s).")
