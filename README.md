@@ -1,68 +1,83 @@
 # Canva Background Remover Automation
 
-Windows-only helper for downloading images from a Google Photos shared album, opening Canva in Chrome, running BG Remover, and saving JPG output files.
+Windows-only web UI for this automation. It can download images from a Google Photos shared album, open Canva in Chrome, run BG Remover, and save JPG output files.
 
-## Requirements
+## One-Click Setup
 
-- Windows 10 or Windows 11
-- Google Chrome installed
-- Python 3.10 or newer
-- A Canva account with access to the design and BG Remover
+Use this on a new Windows device.
 
-## Setup On A New Windows Device
-
-1. Install Python from <https://www.python.org/downloads/windows/>.
-2. During install, enable **Add python.exe to PATH**.
-3. Install Google Chrome from <https://www.google.com/chrome/>.
-4. Open PowerShell in this project folder.
-5. Install the Python dependency:
-
-```powershell
-python -m pip install playwright
-python -m playwright install chromium
-```
-
-6. Confirm Chrome exists at:
+1. Install **Python 3.10 or newer** from <https://www.python.org/downloads/windows/>.
+2. During Python install, enable **Add python.exe to PATH**.
+3. Install **Google Chrome** from <https://www.google.com/chrome/>.
+4. Double-click:
 
 ```text
-C:\Program Files\Google\Chrome\Application\chrome.exe
+setup_and_run.bat
 ```
 
-If Chrome is somewhere else, set the correct path in the UI.
+The setup script will:
 
-## Start The Web UI
+- create a local `.venv` virtual environment
+- upgrade `pip`
+- install all Python packages from `requirements.txt`
+- download Playwright browser files
+- create the needed `assets` and `chrome_profiles` folders
+- start the web UI
 
-Run:
-
-```powershell
-python web_server.py
-```
-
-This opens a local browser UI at:
+When it finishes, the UI opens at:
 
 ```text
 http://127.0.0.1:8765
 ```
 
-The web UI has fields for:
+Keep the setup/server window open while using the UI.
+
+## Run After Setup
+
+After the first setup, you can still use the same button:
+
+```text
+setup_and_run.bat
+```
+
+It will reuse the existing `.venv`, check/install dependencies, and start the UI again.
+
+You can also run manually from PowerShell:
+
+```powershell
+.\.venv\Scripts\python.exe web_server.py
+```
+
+## What You Need Installed
+
+- Windows 10 or Windows 11
+- Python 3.10 or newer
+- Google Chrome
+- Canva account with access to the design and BG Remover
+
+Everything Python-related is installed by `setup_and_run.bat`.
+
+## Web UI Fields
+
+The web UI lets you set:
 
 - Canva design URL
 - Google Photos shared album URL
-- Single image path
+- single image path
 - Google Photos download folder
-- Output folder and output file name
+- output folder and output file name
 - Chrome EXE path
 - Chrome automation profile folder
-- Debug port
+- debug port
 - Canva placement values
-- Timeout values
-- Batch options
+- timeout values
+- batch options
 
-Click **Start** to run. Logs appear in the live log panel.
+Click **Start** in the web UI to run the automation. Logs appear in the live log panel.
 
-## First Login
+## First Canva Login
 
-The first run opens Chrome with a separate profile in:
+The first run opens Chrome with a separate automation profile:
 
 ```text
 chrome_profiles\canva_automation_profile
@@ -72,13 +87,13 @@ If Canva asks for login, log in inside the opened Chrome window. The same profil
 
 ## Run Modes
 
-Use the default mode to download a Google Photos album and process every image.
+Default mode downloads the Google Photos album and processes every image.
 
-Enable **Use existing images in photos folder** if the album was already downloaded and extracted.
+Enable **Use existing photos folder** if the album was already downloaded.
 
-Enable **Process only the single image** to skip Google Photos and process only the image path from the form.
+Enable **Process only single image** to skip Google Photos and process only the image path from the form.
 
-Use **Max images** to test with a small number of images before running the full batch.
+Use **Max images** when testing with only a few images.
 
 ## Output
 
@@ -92,9 +107,17 @@ For a batch, each output is named from the original image filename with `_bg_rem
 
 ## Troubleshooting
 
-If Chrome does not open, check the **Chrome EXE** field.
+If `setup_and_run.bat` closes quickly, open PowerShell in this folder and run:
 
-If Canva asks for login repeatedly, delete only the automation profile folder and log in again:
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\setup_and_run.ps1
+```
+
+If Python is not found, reinstall Python and enable **Add python.exe to PATH**.
+
+If Chrome does not open, check the **Chrome EXE** field in the UI.
+
+If Canva asks for login repeatedly, delete this folder and log in again:
 
 ```text
 chrome_profiles\canva_automation_profile
