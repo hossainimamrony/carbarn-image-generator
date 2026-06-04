@@ -628,17 +628,37 @@ def get_design_center(page: Any) -> tuple[float, float]:
         """
         () => {
             const selectors = [
-                '[aria-label*="Page 1"]',
-                '[aria-label*="page 1"]',
                 '[data-testid*="page"]',
-                '[data-testid*="canvas"]'
+                '[data-testid*="canvas"]',
+                '[aria-label*="design" i]',
+                '[aria-label*="canvas" i]'
             ];
+
+            const reject = (element) => {
+                const text = (
+                    element.innerText ||
+                    element.textContent ||
+                    element.getAttribute('aria-label') ||
+                    ''
+                ).toLowerCase();
+                return (
+                    text.includes('add page title') ||
+                    element.matches('input, textarea, [contenteditable="true"], [role="textbox"]') ||
+                    Boolean(element.closest('input, textarea, [contenteditable="true"], [role="textbox"]'))
+                );
+            };
 
             for (const selector of selectors) {
                 const elements = Array.from(document.querySelectorAll(selector));
                 const boxes = elements
+                    .filter((element) => !reject(element))
                     .map((element) => element.getBoundingClientRect())
-                    .filter((rect) => rect.width > 250 && rect.height > 250)
+                    .filter((rect) => (
+                        rect.width > 250 &&
+                        rect.height > 250 &&
+                        rect.left > 180 &&
+                        rect.top > 80
+                    ))
                     .sort((a, b) => (b.width * b.height) - (a.width * a.height));
                 if (boxes.length) {
                     const rect = boxes[0];
@@ -742,14 +762,17 @@ def button_near_label(page: Any, label_text: str) -> Any | None:
     return handle.as_element()
 
 
-def toggle_ratio_lock_if_available(page: Any, reason: str = "Ratio lock toggle requested.") -> None:
+def toggle_ratio_lock_if_available(
+    page: Any, reason: str = "Ratio lock toggle requested."
+) -> bool:
     ratio_button = button_near_label(page, "Ratio")
     if ratio_button is None:
-        print("Ratio lock button not found; retrying size inputs without toggling it.")
-        return
+        print("Ratio lock button not found.")
+        return False
 
     ratio_button.click(timeout=5000)
     print(reason)
+    return True
 
 
 def ratio_lock_looks_locked(page: Any) -> bool | None:
@@ -891,6 +914,7 @@ def verify_position_values(
     x_value: str,
     y_value: str,
     label_prefix: str = "Position",
+    expected_height_number: float | None = None,
 ) -> bool:
     expected = {
         "Width": (width, 1.0),
@@ -899,9 +923,11 @@ def verify_position_values(
     }
     if height is not None:
         expected["Height"] = (height, 1.0)
+    elif expected_height_number is not None:
+        expected["Height"] = (px_value(expected_height_number), 2.0)
 
     actual_values: dict[str, str] = {}
-    if height is None:
+    if height is None and expected_height_number is None:
         actual_values["Height"] = read_labeled_value(page, "Height")
 
     for label, (expected_value, tolerance) in expected.items():
@@ -956,6 +982,56 @@ def height_matches_ratio(actual_height: float | None, expected_height: float | N
     if actual_height is None or expected_height is None:
         return False
     return abs(actual_height - expected_height) <= 2.0
+
+
+def px_value(value: float) -> str:
+    return f"{value:g} px"
+
+
+def ratio_probe_width(baseline_width: float, target_width: str) -> float:
+    target_number = first_number(target_width)
+    delta = 10.0
+    if target_number is not None and abs((baseline_width + delta) - target_number) <= 2:
+        delta = -10.0
+    if baseline_width + delta <= 1:
+        delta = 10.0
+    return baseline_width + delta
+
+
+def ensure_ratio_locked_with_probe(
+    page: Any,
+    baseline_width: float,
+    baseline_height: float,
+    target_width: str,
+) -> None:
+    probe_width = ratio_probe_width(baseline_width, target_width)
+    expected_probe_height = baseline_height * probe_width / baseline_width
+
+    print("Checking Ratio lock before setting final Width.")
+    fill_labeled_value(page, "Width", px_value(probe_width))
+    probe_height = first_number(read_labeled_value(page, "Height"))
+    fill_labeled_value(page, "Width", px_value(baseline_width))
+
+    if height_matches_ratio(probe_height, expected_probe_height):
+        print("Ratio lock verified before setting final Width.")
+        return
+
+    print("Ratio was not locked; restoring size and clicking Ratio lock.")
+    fill_labeled_value(page, "Width", px_value(baseline_width))
+    if not toggle_ratio_lock_if_available(page, "Ratio locked before setting final Width."):
+        raise RuntimeError("Could not find Canva Ratio lock button before setting Width.")
+    page.wait_for_timeout(300)
+
+    fill_labeled_value(page, "Width", px_value(probe_width))
+    probe_height = first_number(read_labeled_value(page, "Height"))
+    fill_labeled_value(page, "Width", px_value(baseline_width))
+
+    if not height_matches_ratio(probe_height, expected_probe_height):
+        raise RuntimeError(
+            "Canva Ratio lock did not make Height follow Width. Stopping before download."
+        )
+
+    print("Ratio lock verified before setting final Width.")
 
 
 def position_panel_input(page: Any, label_text: str) -> Any | None:
@@ -1065,6 +1141,61 @@ def position_panel_input(page: Any, label_text: str) -> Any | None:
     return handle.as_element()
 
 
+def set_image_size_and_position_with_locked_ratio(
+    page: Any,
+    width: str,
+    x_value: str,
+    y_value: str,
+    label_prefix: str = "Position",
+) -> None:
+    recover_position_panel(page)
+    baseline_width = first_number(read_labeled_value(page, "Width"))
+    baseline_height = first_number(read_labeled_value(page, "Height"))
+    expected_height = proportional_height(baseline_width, baseline_height, width)
+    if (
+        baseline_width is None
+        or baseline_height is None
+        or expected_height is None
+        or baseline_width <= 0
+    ):
+        raise RuntimeError(
+            "Could not read Canva Width/Height before final ratio placement."
+        )
+
+    ensure_ratio_locked_with_probe(page, baseline_width, baseline_height, width)
+
+    print("Setting final Width after Ratio lock verification.")
+    fill_labeled_value(page, "Width", width)
+    after_height = first_number(read_labeled_value(page, "Height"))
+    if not height_matches_ratio(after_height, expected_height):
+        if after_height is None:
+            raise RuntimeError(
+                "Final Width was set, but Canva Height could not be read."
+            )
+        raise RuntimeError(
+            "Final Width was set, but Canva Height did not stay proportional. "
+            f"Expected about {expected_height:g} px, got {after_height:g} px."
+        )
+    print(f"Ratio lock verified: Height adjusted to {after_height:g} px.")
+
+    fill_labeled_value(page, "X", x_value)
+    fill_labeled_value(page, "Y", y_value)
+    page.wait_for_timeout(500)
+
+    if not verify_position_values(
+        page,
+        width,
+        None,
+        x_value,
+        y_value,
+        label_prefix=label_prefix,
+        expected_height_number=expected_height,
+    ):
+        raise RuntimeError(
+            "Final Canva placement verification failed after Ratio lock."
+        )
+
+
 def set_image_size_and_position(
     page: Any,
     width: str,
@@ -1077,6 +1208,16 @@ def set_image_size_and_position(
     ensure_image_selected(page)
 
     open_position_panel(page)
+
+    if lock_ratio_for_width and height is None:
+        set_image_size_and_position_with_locked_ratio(
+            page,
+            width,
+            x_value,
+            y_value,
+            label_prefix=label_prefix,
+        )
+        return
 
     for attempt in range(3):
         try:
@@ -1222,9 +1363,7 @@ def wait_for_canva_to_settle(
     while time.time() < deadline:
         status = canva_processing_status(page)
         toolbar_ready = canva_has_selected_image_toolbar(page)
-        blocking_status = status is not None and (
-            not toolbar_ready or status != "visible progress/loading indicator"
-        )
+        blocking_status = status is not None or not toolbar_ready
 
         if blocking_status or not toolbar_ready:
             last_busy_or_unselected = time.time()
@@ -1243,9 +1382,8 @@ def wait_for_canva_to_settle(
 
         page.wait_for_timeout(500)
 
-    print(
-        f"{description} did not expose a clean settled state before "
-        f"{timeout_seconds}s; continuing because Canva can keep background UI busy."
+    raise RuntimeError(
+        f"{description} did not finish cleanly before {timeout_seconds}s."
     )
 
 
@@ -1257,8 +1395,8 @@ def run_bg_remover(page: Any, timeout_seconds: int) -> None:
         page,
         timeout_seconds=timeout_seconds,
         description="BG Remover",
-        quiet_ms=3000,
-        minimum_seconds=3.0,
+        quiet_ms=6000,
+        minimum_seconds=10.0,
     )
 
 
